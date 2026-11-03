@@ -1,0 +1,18 @@
+Package: PredLDA
+Type: Package
+Title: Predictive Linear Discriminant Analysis with an R6 Interface
+Version: 0.1.0
+Authors@R: c(
+    person("Ryan", "Ducret", email = "ryanducret@live.fr", role = c("aut", "cre")))
+Description: Implements predictive linear discriminant analysis (LDA) through an
+    R6 class whose interface follows the 'scikit-learn' conventions: fit(),
+    predict(), predict_proba(), print() and summary(). The target variable may
+    have two or more classes and the linear classification functions
+    (one per class) are exposed for interpretation.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    R6
+Suggests:
+    MASS
+Config/roxygen2/version: 8.1.0
