@@ -4,103 +4,56 @@
 \alias{LDA}
 \title{Predictive Linear Discriminant Analysis (R6 class)}
 \description{
-R6 class implementing predictive linear discriminant analysis (LDA) with an
-interface modelled on 'scikit-learn': create the object with
-\code{LDA$new()}, train it with \code{$fit(X, y)}, then use
-\code{$predict(X)} and \code{$predict_proba(X)} on new data.
+Predictive LDA with a 'scikit-learn'-like interface: \code{LDA$new()},
+\code{$fit(X, y)}, then \code{$predict(X)} / \code{$predict_proba(X)}.
 }
 \details{
-Under the LDA hypotheses (multivariate normal classes sharing a common
-covariance matrix), the Bayes rule assigns an observation \eqn{x} to the
-class \eqn{k} maximising the linear classification function
-\deqn{d_k(x) = a_{0k} + a_k^\top x}{d_k(x) = a0_k + a_k' x}
-with
-\deqn{a_k = W^{-1} \mu_k, \qquad a_{0k} = \log \pi_k - \frac{1}{2} \mu_k^\top W^{-1} \mu_k}{a_k = W^-1 mu_k,  a0_k = log(pi_k) - 0.5 mu_k' W^-1 mu_k}
-where \eqn{\mu_k} is the mean vector of class \eqn{k}, \eqn{\pi_k} its prior
-probability and \eqn{W} the pooled within-class covariance matrix
-\deqn{W = \frac{1}{n - K} \sum_{k=1}^{K} \sum_{i : y_i = k} (x_i - \mu_k)(x_i - \mu_k)^\top.}{W = 1/(n - K) sum_k sum_{i in k} (x_i - mu_k)(x_i - mu_k)'.}
-
-Posterior probabilities are obtained with a numerically stable softmax of
-the scores: \eqn{P(Y = k \mid x) = \exp(d_k(x)) / \sum_j \exp(d_j(x))}.
-
-\strong{Implementation.} The class means are computed in a single pass with
-\code{rowsum()}, \eqn{W} with one \code{crossprod()} of the class-centred
-data, and \eqn{W^{-1}} through its Cholesky factor. When \eqn{W} is singular
-or ill-conditioned (collinear or constant variables, more variables than
-observations), a Moore-Penrose pseudo-inverse based on the eigen
-decomposition is used instead and a warning is issued.
-
-The explanatory variables must currently be numeric. Columns are matched by
-name between \code{$fit()} and \code{$predict()}, so the column order of new
-data does not matter.
+Each class \eqn{k} gets a linear classification function
+\eqn{d_k(x) = a_{0k} + a_k^\top x} with \eqn{a_k = W^{-1} \mu_k} and
+\eqn{a_{0k} = \log \pi_k - \frac{1}{2} \mu_k^\top W^{-1} \mu_k}, where
+\eqn{W} is the pooled within-class covariance matrix. Observations are
+assigned to the class with the highest score. If \eqn{W} is singular, a
+pseudo-inverse is used and a warning is issued. Variables must be numeric.
 }
-\section{Reading the results}{
-
-\code{$coefficients} holds one column per class: the intercept
-(\code{"(Intercept)"}) followed by one coefficient per explanatory
-variable. An observation is assigned to the class whose function gives the
-highest score. With two classes, the difference of the two columns gives a
-single score whose sign decides the class.
-}
-
 \examples{
 model <- LDA$new()
 model$fit(iris[, 1:4], iris$Species)
-model
-
-# Classification functions (one column per class)
 model$coefficients
-
-# Predictions on new data
 new_obs <- iris[c(1, 51, 101), 1:4]
 model$predict(new_obs)
 model$predict_proba(new_obs)
-
-# Detailed output
 model$summary()
-
-# User-defined priors
-model_eq <- LDA$new(priors = c(setosa = 0.2, versicolor = 0.4, virginica = 0.4))
-model_eq$fit(iris[, 1:4], iris$Species)$predict(new_obs)
 
 }
 \references{
 Hastie T., Tibshirani R., Friedman J. (2009). \emph{The Elements of
 Statistical Learning}, 2nd ed., Springer, section 4.3.
-
-Rakotomalala R. (2020). \emph{Analyse discriminante linéaire}, course notes,
-Université Lyon 2. \url{https://eric.univ-lyon2.fr/ricco/cours/}
 }
 \seealso{
-\code{\link[MASS]{lda}} for the reference implementation.
+\code{\link[MASS]{lda}}
 }
 \section{Public fields}{
   \if{html}{\out{<div class="r6-fields">}}
   \describe{
-    \item{\code{priors}}{Prior class probabilities (named numeric vector). Set by
-the user in the constructor, or estimated from the class frequencies
-by \code{$fit()}.}
+    \item{\code{priors}}{Prior class probabilities.}
 
-    \item{\code{tol}}{Relative tolerance used to detect a singular within-class
-covariance matrix.}
+    \item{\code{tol}}{Tolerance used to detect a singular \eqn{W}.}
 
-    \item{\code{classes}}{Levels of the target variable (character vector).}
+    \item{\code{classes}}{Levels of the target variable.}
 
-    \item{\code{class_counts}}{Number of training observations per class.}
+    \item{\code{class_counts}}{Training observations per class.}
 
-    \item{\code{feature_names}}{Names of the explanatory variables used by the model.}
+    \item{\code{feature_names}}{Names of the explanatory variables.}
 
     \item{\code{n_obs}}{Number of training observations.}
 
-    \item{\code{means}}{Matrix of class means (classes in rows, variables in columns).}
+    \item{\code{means}}{Class means (classes in rows).}
 
-    \item{\code{within_cov}}{Pooled within-class covariance matrix \eqn{W}
-(unbiased, divided by \eqn{n - K}).}
+    \item{\code{within_cov}}{Pooled within-class covariance matrix \eqn{W}.}
 
-    \item{\code{coefficients}}{Matrix of classification functions: the intercept
-in the first row, then one row per variable; one column per class.}
+    \item{\code{coefficients}}{Classification functions (intercept first, one column per class).}
 
-    \item{\code{is_fitted}}{\code{TRUE} once \code{$fit()} has run successfully.}
+    \item{\code{is_fitted}}{\code{TRUE} once \code{$fit()} has run.}
   }
   \if{html}{\out{</div>}}
 }
@@ -131,13 +84,9 @@ in the first row, then one row per variable; one column per class.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{priors}}{Optional prior class probabilities: a positive numeric
-vector with one value per class. If named, names are matched to the
-class levels; otherwise values are taken in the order of
-\code{levels(y)}. Values are rescaled to sum to 1. When \code{NULL}
-(default), priors are the class proportions in the training data.}
-      \item{\code{tol}}{Relative tolerance below which an eigenvalue of \eqn{W} is
-considered null (default \code{1e-8}).}
+      \item{\code{priors}}{Optional positive vector of class priors (named or in
+\code{levels(y)} order), rescaled to sum to 1. Default: class proportions.}
+      \item{\code{tol}}{Relative tolerance for null eigenvalues of \eqn{W}.}
     }
     \if{html}{\out{</div>}}
   }
@@ -150,7 +99,7 @@ considered null (default \code{1e-8}).}
 \if{html}{\out{<a id="method-LDA-fit"></a>}}
 \if{latex}{\out{\hypertarget{method-LDA-fit}{}}}
 \subsection{\code{LDA$fit()}}{
-  Fit the model on training data.
+  Fit the model.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LDA$fit(X, y)}
@@ -159,15 +108,13 @@ considered null (default \code{1e-8}).}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{X}}{Data frame (or matrix) of numeric explanatory variables.}
-      \item{\code{y}}{Target variable: a factor (character or logical vectors are
-converted) of length \code{nrow(X)} with at least two classes. Unused
-levels are dropped.}
+      \item{\code{X}}{Data frame or matrix of numeric variables.}
+      \item{\code{y}}{Target (factor, at least two classes), one value per row of \code{X}.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    The object itself, invisibly, so that calls can be chained.
+    The object, invisibly (chainable).
   }
 }
 
@@ -175,7 +122,7 @@ levels are dropped.}
 \if{html}{\out{<a id="method-LDA-decision_function"></a>}}
 \if{latex}{\out{\hypertarget{method-LDA-decision_function}{}}}
 \subsection{\code{LDA$decision_function()}}{
-  Compute the scores of the classification functions.
+  Scores of the classification functions.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LDA$decision_function(X)}
@@ -184,14 +131,12 @@ levels are dropped.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{X}}{Data frame (or matrix) with the same variables as in
-\code{$fit()}.}
+      \item{\code{X}}{Data frame or matrix with the variables used in \code{$fit()}.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    Numeric matrix of scores (observations in rows, classes in
-  columns).
+    Matrix of scores (observations x classes).
   }
 }
 
@@ -199,7 +144,7 @@ levels are dropped.}
 \if{html}{\out{<a id="method-LDA-predict_proba"></a>}}
 \if{latex}{\out{\hypertarget{method-LDA-predict_proba}{}}}
 \subsection{\code{LDA$predict_proba()}}{
-  Posterior class membership probabilities.
+  Posterior class probabilities.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LDA$predict_proba(X)}
@@ -208,14 +153,12 @@ levels are dropped.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{X}}{Data frame (or matrix) with the same variables as in
-\code{$fit()}.}
+      \item{\code{X}}{Data frame or matrix with the variables used in \code{$fit()}.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    Numeric matrix of probabilities (observations in rows, classes
-  in columns); each row sums to 1.
+    Matrix of probabilities (observations x classes).
   }
 }
 
@@ -223,7 +166,7 @@ levels are dropped.}
 \if{html}{\out{<a id="method-LDA-predict"></a>}}
 \if{latex}{\out{\hypertarget{method-LDA-predict}{}}}
 \subsection{\code{LDA$predict()}}{
-  Predict the class of each observation.
+  Predicted classes.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LDA$predict(X)}
@@ -232,14 +175,12 @@ levels are dropped.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{X}}{Data frame (or matrix) with the same variables as in
-\code{$fit()}.}
+      \item{\code{X}}{Data frame or matrix with the variables used in \code{$fit()}.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    Factor of predicted classes, with the same levels as the
-  training target.
+    Factor with the training levels.
   }
 }
 
@@ -247,7 +188,7 @@ levels are dropped.}
 \if{html}{\out{<a id="method-LDA-score"></a>}}
 \if{latex}{\out{\hypertarget{method-LDA-score}{}}}
 \subsection{\code{LDA$score()}}{
-  Proportion of correctly classified observations.
+  Accuracy on \code{(X, y)}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LDA$score(X, y)}
@@ -256,13 +197,13 @@ levels are dropped.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{X}}{Data frame (or matrix) of explanatory variables.}
+      \item{\code{X}}{Explanatory variables.}
       \item{\code{y}}{True classes.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    Accuracy, a number between 0 and 1.
+    Proportion of correct predictions.
   }
 }
 
@@ -270,7 +211,7 @@ levels are dropped.}
 \if{html}{\out{<a id="method-LDA-print"></a>}}
 \if{latex}{\out{\hypertarget{method-LDA-print}{}}}
 \subsection{\code{LDA$print()}}{
-  Print a short description of the model.
+  Print the model.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LDA$print(...)}
@@ -289,8 +230,7 @@ levels are dropped.}
 \if{html}{\out{<a id="method-LDA-summary"></a>}}
 \if{latex}{\out{\hypertarget{method-LDA-summary}{}}}
 \subsection{\code{LDA$summary()}}{
-  Print detailed information on the model: class
-  distribution and priors, class means and classification functions.
+  Detailed summary of the fitted model.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LDA$summary(digits = 4)}
@@ -299,13 +239,13 @@ levels are dropped.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{digits}}{Number of decimal places displayed (default 4).}
+      \item{\code{digits}}{Decimal places displayed.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    Invisibly, a list with elements \code{class_distribution},
-  \code{means} and \code{coefficients}.
+    Invisibly, a list with \code{class_distribution}, \code{means}
+  and \code{coefficients}.
   }
 }
 

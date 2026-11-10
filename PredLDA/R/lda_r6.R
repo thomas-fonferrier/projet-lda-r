@@ -1,8 +1,6 @@
 #' PredLDA: Predictive Linear Discriminant Analysis
 #'
-#' The package provides the R6 class \code{\link{LDA}}, which fits a predictive
-#' linear discriminant analysis on a data frame of explanatory variables and a
-#' categorical target (factor with two or more levels).
+#' Provides the R6 class \code{\link{LDA}}.
 #'
 #' @keywords internal
 "_PACKAGE"
@@ -10,71 +8,31 @@
 #' Predictive Linear Discriminant Analysis (R6 class)
 #'
 #' @description
-#' R6 class implementing predictive linear discriminant analysis (LDA) with an
-#' interface modelled on 'scikit-learn': create the object with
-#' \code{LDA$new()}, train it with \code{$fit(X, y)}, then use
-#' \code{$predict(X)} and \code{$predict_proba(X)} on new data.
+#' Predictive LDA with a 'scikit-learn'-like interface: \code{LDA$new()},
+#' \code{$fit(X, y)}, then \code{$predict(X)} / \code{$predict_proba(X)}.
 #'
 #' @details
-#' Under the LDA hypotheses (multivariate normal classes sharing a common
-#' covariance matrix), the Bayes rule assigns an observation \eqn{x} to the
-#' class \eqn{k} maximising the linear classification function
-#' \deqn{d_k(x) = a_{0k} + a_k^\top x}{d_k(x) = a0_k + a_k' x}
-#' with
-#' \deqn{a_k = W^{-1} \mu_k, \qquad a_{0k} = \log \pi_k - \frac{1}{2} \mu_k^\top W^{-1} \mu_k}{a_k = W^-1 mu_k,  a0_k = log(pi_k) - 0.5 mu_k' W^-1 mu_k}
-#' where \eqn{\mu_k} is the mean vector of class \eqn{k}, \eqn{\pi_k} its prior
-#' probability and \eqn{W} the pooled within-class covariance matrix
-#' \deqn{W = \frac{1}{n - K} \sum_{k=1}^{K} \sum_{i : y_i = k} (x_i - \mu_k)(x_i - \mu_k)^\top.}{W = 1/(n - K) sum_k sum_{i in k} (x_i - mu_k)(x_i - mu_k)'.}
-#'
-#' Posterior probabilities are obtained with a numerically stable softmax of
-#' the scores: \eqn{P(Y = k \mid x) = \exp(d_k(x)) / \sum_j \exp(d_j(x))}.
-#'
-#' \strong{Implementation.} The class means are computed in a single pass with
-#' \code{rowsum()}, \eqn{W} with one \code{crossprod()} of the class-centred
-#' data, and \eqn{W^{-1}} through its Cholesky factor. When \eqn{W} is singular
-#' or ill-conditioned (collinear or constant variables, more variables than
-#' observations), a Moore-Penrose pseudo-inverse based on the eigen
-#' decomposition is used instead and a warning is issued.
-#'
-#' The explanatory variables must currently be numeric. Columns are matched by
-#' name between \code{$fit()} and \code{$predict()}, so the column order of new
-#' data does not matter.
-#'
-#' @section Reading the results:
-#' \code{$coefficients} holds one column per class: the intercept
-#' (\code{"(Intercept)"}) followed by one coefficient per explanatory
-#' variable. An observation is assigned to the class whose function gives the
-#' highest score. With two classes, the difference of the two columns gives a
-#' single score whose sign decides the class.
+#' Each class \eqn{k} gets a linear classification function
+#' \eqn{d_k(x) = a_{0k} + a_k^\top x} with \eqn{a_k = W^{-1} \mu_k} and
+#' \eqn{a_{0k} = \log \pi_k - \frac{1}{2} \mu_k^\top W^{-1} \mu_k}, where
+#' \eqn{W} is the pooled within-class covariance matrix. Observations are
+#' assigned to the class with the highest score. If \eqn{W} is singular, a
+#' pseudo-inverse is used and a warning is issued. Variables must be numeric.
 #'
 #' @references
 #' Hastie T., Tibshirani R., Friedman J. (2009). \emph{The Elements of
 #' Statistical Learning}, 2nd ed., Springer, section 4.3.
 #'
-#' Rakotomalala R. (2020). \emph{Analyse discriminante linéaire}, course notes,
-#' Université Lyon 2. \url{https://eric.univ-lyon2.fr/ricco/cours/}
-#'
-#' @seealso \code{\link[MASS]{lda}} for the reference implementation.
+#' @seealso \code{\link[MASS]{lda}}
 #'
 #' @examples
 #' model <- LDA$new()
 #' model$fit(iris[, 1:4], iris$Species)
-#' model
-#'
-#' # Classification functions (one column per class)
 #' model$coefficients
-#'
-#' # Predictions on new data
 #' new_obs <- iris[c(1, 51, 101), 1:4]
 #' model$predict(new_obs)
 #' model$predict_proba(new_obs)
-#'
-#' # Detailed output
 #' model$summary()
-#'
-#' # User-defined priors
-#' model_eq <- LDA$new(priors = c(setosa = 0.2, versicolor = 0.4, virginica = 0.4))
-#' model_eq$fit(iris[, 1:4], iris$Species)$predict(new_obs)
 #'
 #' @importFrom R6 R6Class
 #' @export
@@ -83,49 +41,31 @@ LDA <- R6::R6Class(
 
   public = list(
 
-    #' @field priors Prior class probabilities (named numeric vector). Set by
-    #'   the user in the constructor, or estimated from the class frequencies
-    #'   by \code{$fit()}.
+    #' @field priors Prior class probabilities.
     priors = NULL,
-
-    #' @field tol Relative tolerance used to detect a singular within-class
-    #'   covariance matrix.
+    #' @field tol Tolerance used to detect a singular \eqn{W}.
     tol = NULL,
-
-    #' @field classes Levels of the target variable (character vector).
+    #' @field classes Levels of the target variable.
     classes = NULL,
-
-    #' @field class_counts Number of training observations per class.
+    #' @field class_counts Training observations per class.
     class_counts = NULL,
-
-    #' @field feature_names Names of the explanatory variables used by the model.
+    #' @field feature_names Names of the explanatory variables.
     feature_names = NULL,
-
     #' @field n_obs Number of training observations.
     n_obs = NULL,
-
-    #' @field means Matrix of class means (classes in rows, variables in columns).
+    #' @field means Class means (classes in rows).
     means = NULL,
-
-    #' @field within_cov Pooled within-class covariance matrix \eqn{W}
-    #'   (unbiased, divided by \eqn{n - K}).
+    #' @field within_cov Pooled within-class covariance matrix \eqn{W}.
     within_cov = NULL,
-
-    #' @field coefficients Matrix of classification functions: the intercept
-    #'   in the first row, then one row per variable; one column per class.
+    #' @field coefficients Classification functions (intercept first, one column per class).
     coefficients = NULL,
-
-    #' @field is_fitted \code{TRUE} once \code{$fit()} has run successfully.
+    #' @field is_fitted \code{TRUE} once \code{$fit()} has run.
     is_fitted = FALSE,
 
     #' @description Create a new, unfitted LDA model.
-    #' @param priors Optional prior class probabilities: a positive numeric
-    #'   vector with one value per class. If named, names are matched to the
-    #'   class levels; otherwise values are taken in the order of
-    #'   \code{levels(y)}. Values are rescaled to sum to 1. When \code{NULL}
-    #'   (default), priors are the class proportions in the training data.
-    #' @param tol Relative tolerance below which an eigenvalue of \eqn{W} is
-    #'   considered null (default \code{1e-8}).
+    #' @param priors Optional positive vector of class priors (named or in
+    #'   \code{levels(y)} order), rescaled to sum to 1. Default: class proportions.
+    #' @param tol Relative tolerance for null eigenvalues of \eqn{W}.
     #' @return A new \code{LDA} object.
     initialize = function(priors = NULL, tol = 1e-8) {
       if (!is.null(priors)) {
@@ -141,12 +81,10 @@ LDA <- R6::R6Class(
       invisible(self)
     },
 
-    #' @description Fit the model on training data.
-    #' @param X Data frame (or matrix) of numeric explanatory variables.
-    #' @param y Target variable: a factor (character or logical vectors are
-    #'   converted) of length \code{nrow(X)} with at least two classes. Unused
-    #'   levels are dropped.
-    #' @return The object itself, invisibly, so that calls can be chained.
+    #' @description Fit the model.
+    #' @param X Data frame or matrix of numeric variables.
+    #' @param y Target (factor, at least two classes), one value per row of \code{X}.
+    #' @return The object, invisibly (chainable).
     fit = function(X, y) {
       X <- private$prepare_X(X, training = TRUE)
       y <- private$prepare_y(y, nrow(X))
@@ -160,7 +98,6 @@ LDA <- R6::R6Class(
       counts <- tabulate(y, nbins = K)
       names(counts) <- levels(y)
 
-      # Statistical computations are in stats_utils.R.
       M <- class_means(X, y, counts)
       W <- pooled_within_cov(X, y, M)
       W_inv <- inverse_cov(W, self$tol)
@@ -180,11 +117,9 @@ LDA <- R6::R6Class(
       invisible(self)
     },
 
-    #' @description Compute the scores of the classification functions.
-    #' @param X Data frame (or matrix) with the same variables as in
-    #'   \code{$fit()}.
-    #' @return Numeric matrix of scores (observations in rows, classes in
-    #'   columns).
+    #' @description Scores of the classification functions.
+    #' @param X Data frame or matrix with the variables used in \code{$fit()}.
+    #' @return Matrix of scores (observations x classes).
     decision_function = function(X) {
       private$check_fitted()
       X <- private$prepare_X(X, training = FALSE)
@@ -194,29 +129,25 @@ LDA <- R6::R6Class(
       S
     },
 
-    #' @description Posterior class membership probabilities.
-    #' @param X Data frame (or matrix) with the same variables as in
-    #'   \code{$fit()}.
-    #' @return Numeric matrix of probabilities (observations in rows, classes
-    #'   in columns); each row sums to 1.
+    #' @description Posterior class probabilities.
+    #' @param X Data frame or matrix with the variables used in \code{$fit()}.
+    #' @return Matrix of probabilities (observations x classes).
     predict_proba = function(X) {
       softmax_rows(self$decision_function(X))
     },
 
-    #' @description Predict the class of each observation.
-    #' @param X Data frame (or matrix) with the same variables as in
-    #'   \code{$fit()}.
-    #' @return Factor of predicted classes, with the same levels as the
-    #'   training target.
+    #' @description Predicted classes.
+    #' @param X Data frame or matrix with the variables used in \code{$fit()}.
+    #' @return Factor with the training levels.
     predict = function(X) {
       S <- self$decision_function(X)
       factor(self$classes[max.col(S, ties.method = "first")], levels = self$classes)
     },
 
-    #' @description Proportion of correctly classified observations.
-    #' @param X Data frame (or matrix) of explanatory variables.
+    #' @description Accuracy on \code{(X, y)}.
+    #' @param X Explanatory variables.
     #' @param y True classes.
-    #' @return Accuracy, a number between 0 and 1.
+    #' @return Proportion of correct predictions.
     score = function(X, y) {
       pred <- self$predict(X)
       if (length(y) != length(pred)) {
@@ -225,7 +156,7 @@ LDA <- R6::R6Class(
       mean(as.character(pred) == as.character(y))
     },
 
-    #' @description Print a short description of the model.
+    #' @description Print the model.
     #' @param ... Ignored.
     print = function(...) {
       cat("Predictive Linear Discriminant Analysis (R6 class LDA)\n")
@@ -242,11 +173,10 @@ LDA <- R6::R6Class(
       invisible(self)
     },
 
-    #' @description Print detailed information on the model: class
-    #'   distribution and priors, class means and classification functions.
-    #' @param digits Number of decimal places displayed (default 4).
-    #' @return Invisibly, a list with elements \code{class_distribution},
-    #'   \code{means} and \code{coefficients}.
+    #' @description Detailed summary of the fitted model.
+    #' @param digits Decimal places displayed.
+    #' @return Invisibly, a list with \code{class_distribution}, \code{means}
+    #'   and \code{coefficients}.
     summary = function(digits = 4) {
       private$check_fitted()
       distribution <- data.frame(
@@ -293,8 +223,7 @@ LDA <- R6::R6Class(
       }
     },
 
-    # Convert X to a numeric matrix. At prediction time, columns are matched
-    # by name to those seen during fit().
+    # At prediction time, columns are matched by name to those seen in fit().
     prepare_X = function(X, training) {
       if (is.numeric(X) && is.null(dim(X))) {
         X <- matrix(X, nrow = 1L, dimnames = list(NULL, names(X)))

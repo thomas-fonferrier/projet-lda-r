@@ -6,9 +6,7 @@
 \alias{PredLDA-package}
 \title{PredLDA: Predictive Linear Discriminant Analysis}
 \description{
-The package provides the R6 class \code{\link{LDA}}, which fits a predictive
-linear discriminant analysis on a data frame of explanatory variables and a
-categorical target (factor with two or more levels).
+Provides the R6 class \code{\link{LDA}}.
 }
 \author{
 \strong{Maintainer}: Ryan Ducret \email{ryanducret@live.fr}
