@@ -14,5 +14,7 @@ Encoding: UTF-8
 Imports:
     R6
 Suggests:
-    MASS
+    MASS,
+    shiny,
+    readxl
 Config/roxygen2/version: 8.1.0
