@@ -7,7 +7,7 @@ interface follows the scikit-learn conventions: `fit()`, `predict()`,
 ## Installation
 
 ```r
-# install.packages("remotes")
+# Installer remotes si nécessaire : install.packages("remotes")
 remotes::install_local("PredLDA")
 ```
 
@@ -18,7 +18,7 @@ library(PredLDA)
 
 model <- LDA$new()
 model$fit(iris[, 1:4], iris$Species)
-model$coefficients            # one classification function per class
+model$coefficients            # Une fonction de classification par classe
 
 new_obs <- iris[c(1, 51, 101), 1:4]
 model$predict(new_obs)
@@ -35,3 +35,19 @@ model$summary()
 | `tests/` | Unit tests and validation against `MASS::lda` |
 | `inst/shiny/` | Shiny application |
 | `report/` | LaTeX report |
+
+## Shiny application
+
+Install `shiny` before launching the app. Install `readxl` if you need Excel input.
+
+```r
+# Lancer depuis la racine du dépôt
+shiny::runApp("PredLDA/inst/shiny")
+
+# Ou lancer la version incluse dans le package installé
+shiny::runApp(system.file("shiny", package = "PredLDA"))
+```
+
+See the [English Shiny tutorial](inst/shiny/README.md) for a reproducible example, input formats, prediction, evaluation definitions and interface limits. Example input files are provided in [inst/shiny/examples/](inst/shiny/examples/).
+
+The app uses numeric predictors supported by the current core. Manual predictor selection is not automatic statistical feature selection. Categorical-predictor preprocessing and variable-relevance methods remain algorithm-team integration items.
