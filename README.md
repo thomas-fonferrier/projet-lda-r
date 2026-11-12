@@ -36,7 +36,7 @@ model$summary()
 | Function help | `?LDA` after installation |
 | Vignette | `vignette("predlda-intro", package = "PredLDA")` |
 | Shiny tutorial | [PredLDA/inst/shiny/README.md](PredLDA/inst/shiny/README.md) |
-| French LaTeX report (sources) | [PredLDA/report/](PredLDA/report/) |
+| French report (PDF + LaTeX) | [PredLDA/report/rapport.pdf](PredLDA/report/rapport.pdf) |
 
 ## Launch the Shiny app
 

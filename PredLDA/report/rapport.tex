@@ -13,6 +13,8 @@
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{caption}
+\usepackage{float}
+\usepackage{enumitem}
 
 \hypersetup{
   colorlinks=true,
@@ -26,15 +28,19 @@
   breaklines=true,
   frame=single,
   columns=fullflexible,
-  showstringspaces=false
+  showstringspaces=false,
+  keepspaces=true,
+  backgroundcolor=\color{gray!5}
 }
 
-\title{PredLDA\\[0.4em]
-\large Package R d'analyse discriminante linéaire prédictive\\[0.3em]
+\graphicspath{{images/}}
+
+\title{PredLDA\\[0.35em]
+\large Analyse discriminante lin\'eaire pr\'edictive en R\\[0.25em]
 \normalsize M2 SISE --- Programmation R --- 2026--2027}
 \author{
 Thomas Fonferrier \and Ryan Ducret \and Aya Saadi \and Xilian Jing\\
-Équipe G
+\'Equipe G
 }
 \date{\today}
 
@@ -42,43 +48,37 @@ Thomas Fonferrier \and Ryan Ducret \and Aya Saadi \and Xilian Jing\\
 \maketitle
 
 \begin{abstract}
-Ce rapport présente \textbf{PredLDA}, un package R proposant l'analyse
-discriminante linéaire (LDA) prédictive via une classe R6 d'interface proche de
-scikit-learn (\texttt{fit}, \texttt{predict}, \texttt{predict\_proba}). Nous
-décrivons les formules, l'architecture logicielle, le pseudo-code des
-algorithmes, l'application Shiny de démonstration, les tests de validation et
-les limites actuelles du cœur numérique.
+Ce rapport pr\'esente le package R \textbf{PredLDA}. Le package propose une
+analyse discriminante lin\'eaire pr\'edictive, accessible via une classe R6
+proche de l'API scikit-learn. Nous d\'ecrivons les formules utilis\'ees, le
+d\'ecoupage du code, le d\'eroulement de l'apprentissage et de la pr\'ediction,
+l'application Shiny, les tests, puis l'installation depuis GitHub. Les captures
+de l'interface figurent en annexe.
 \end{abstract}
 
 \tableofcontents
 \vspace{1em}
 
-%----------------------------------------------------------------------
-\section{Introduction et objectifs}
-%----------------------------------------------------------------------
+\section{Introduction}
 
-L'objectif du projet est de livrer un package R installable depuis GitHub,
-accompagné d'une aide aux normes R (anglais), d'un tutoriel reproductible, d'une
-application Shiny et du présent rapport. Le cœur statistique implémente la LDA
-prédictive pour une cible catégorielle à \(K \ge 2\) classes, en exposant les
-fonctions de classification linéaires.
+Le projet consiste \`a livrer un package R installable depuis GitHub. Le package
+doit proposer une LDA pr\'edictive pour une cible \`a au moins deux classes. Il
+doit aussi exposer les fonctions de classification, fournir une documentation
+en anglais, un tutoriel reproductible et une application Shiny.
 
-Le dépôt GitHub est
-\url{https://github.com/thomas-fonferrier/projet-lda-r}
-(sous-dossier installable \texttt{PredLDA/}).
+Le code est h\'eberg\'e ici :
+\url{https://github.com/thomas-fonferrier/projet-lda-r}.
+Le package installable se trouve dans le dossier \texttt{PredLDA/}.
 
-%----------------------------------------------------------------------
-\section{Rappels méthodologiques : LDA prédictive}
-%----------------------------------------------------------------------
+\section{M\'ethode : LDA pr\'edictive}
 
-\subsection{Hypothèses et notation}
+\subsection{Principe}
 
-Soient \(X \in \mathbb{R}^{n \times p}\) les variables explicatives numériques
-et \(y\) une variable cible à \(K\) modalités. Pour chaque classe \(k\), on note
-\(\mu_k\) la moyenne empirique, \(\pi_k\) la probabilité a priori, et \(W\) la
-matrice de covariance intra-classe \emph{poolée}. Sous l'hypothèse de
-covariances égales entre classes, la règle de Bayes conduit à des scores
-linéaires \cite{hastie2009esl}.
+On dispose de variables num\'eriques \(X\) et d'une cible \(y\) \`a \(K\)
+classes. Pour chaque classe \(k\), on estime une moyenne \(\mu_k\) et une
+probabilit\'e a priori \(\pi_k\). On estime aussi une covariance intra-classe
+commune \(W\). Sous cette hypoth\`ese, la r\`egle de d\'ecision se ram\`ene \`a
+des scores lin\'eaires \cite{hastie2009esl}.
 
 \subsection{Fonctions de classification}
 
@@ -88,178 +88,150 @@ Pour chaque classe \(k\) :
   a_{0k} &= \log \pi_k - \tfrac{1}{2} \mu_k^\top W^{-1} \mu_k, \\
   d_k(x) &= a_{0k} + a_k^\top x.
 \end{align}
-La classe prédite est \(\arg\max_k d_k(x)\). Les probabilités a posteriori sont
-obtenues par softmax des scores \(d_k(x)\).
+On affecte l'observation \`a la classe de score maximal. Les probabilit\'es
+affich\'ees par \texttt{predict\_proba} viennent d'un softmax sur ces scores.
 
-\subsection{Covariance poolée}
+\subsection{Estimation de \(W\)}
 
-Après centrage de chaque observation sur la moyenne de sa classe
-(\(X_c\)), on estime
+Apr\`es centrage de chaque ligne sur la moyenne de sa classe, on calcule
 \begin{equation}
   W = \frac{X_c^\top X_c}{n - K}.
 \end{equation}
-Si \(W\) est singulière (variables colinéaires ou constantes), une
-pseudo-inverse de Moore--Penrose est utilisée et un avertissement est émis.
+Si \(W\) n'est pas inversible, le package utilise une pseudo-inverse et
+signale un avertissement.
 
 \subsection{Priors}
 
-Par défaut, \(\pi_k = n_k / n\). L'utilisateur peut fournir un vecteur de
-priors strictement positifs (renormalisé). Les priors n'affectent que les
-intercepts via \(\log \pi_k\).
+Par d\'efaut, \(\pi_k = n_k / n\). On peut aussi fournir des priors
+personnalis\'es. Ils n'agissent que sur l'intercept, via \(\log \pi_k\).
 
-\subsection{Cas binaire}
+\subsection{Cas \`a deux classes}
 
-Pour \(K=2\), la comparaison de \(d_1\) et \(d_2\) est équivalente à
-\(D(x)=d_1(x)-d_2(x)\). La méthode reste identique au cas multi-classes ;
-\(D(x)\) n'est qu'une réécriture pédagogique affichée par \texttt{summary()}.
+Le calcul reste le m\^eme qu'en multi-classes. Pour \(K=2\),
+\texttt{summary()} affiche aussi \(D(x)=d_1(x)-d_2(x)\). C'est une lecture
+plus simple de la fronti\`ere, pas une autre m\'ethode.
 
-%----------------------------------------------------------------------
 \section{Architecture du package}
-%----------------------------------------------------------------------
 
-\subsection{Organisation des modules}
+Le code est s\'epar\'e en deux couches. Le fichier \texttt{stats\_utils.R}
+contient les calculs. Le fichier \texttt{lda\_r6.R} contient la classe
+publique, les contr\^oles d'entr\'ee et l'affichage.
 
-\begin{table}[ht]
+\begin{table}[H]
 \centering
 \begin{tabular}{@{}ll@{}}
 \toprule
-Élément & Rôle \\
+\'El\'ement & R\^ole \\
 \midrule
-\texttt{R/stats\_utils.R} & Briques statistiques internes \\
-\texttt{R/lda\_r6.R} & Classe publique \texttt{LDA} (R6) \\
-\texttt{man/} & Aide Rd générée par roxygen2 \\
-\texttt{tests/} & Tests unitaires et référence \texttt{MASS::lda} \\
-\texttt{inst/extdata/} & Jeux d'exemple du tutoriel \\
-\texttt{inst/shiny/} & Application Shiny embarquée \\
-\texttt{vignettes/} & Vignette \texttt{predlda-intro} \\
-\texttt{report/} & Sources LaTeX de ce rapport \\
+\texttt{R/stats\_utils.R} & Calculs internes \\
+\texttt{R/lda\_r6.R} & Classe \texttt{LDA} \\
+\texttt{man/} & Aide \texttt{?LDA} \\
+\texttt{tests/} & Tests et comparaison \`a \texttt{MASS::lda} \\
+\texttt{inst/extdata/} & Jeux d'exemple \\
+\texttt{inst/shiny/} & Application Shiny \\
+\texttt{vignettes/} & Tutoriel installable \\
+\texttt{report/} & Sources de ce rapport \\
 \bottomrule
 \end{tabular}
-\caption{Architecture du package PredLDA.}
+\caption{\'Organisation du package PredLDA.}
 \end{table}
 
-La séparation volontaire est : \emph{calculs purs} dans
-\texttt{stats\_utils.R}, \emph{validation / API / stockage} dans la classe R6.
-L'application Shiny n'implémente pas l'algorithme ; elle appelle les méthodes
-publiques du package.
+L'application Shiny n'impl\'emente pas l'algorithme. Elle appelle
+\texttt{fit}, \texttt{predict} et \texttt{predict\_proba}.
 
-\subsection{Interface publique (R6)}
+\subsection{Interface R6}
 
-Alignement sur scikit-learn :
-\begin{itemize}
-  \item \texttt{LDA\$new(priors, tol)} --- constructeur ;
-  \item \texttt{\$fit(X, y)} --- apprentissage ;
-  \item \texttt{\$predict(X)} / \texttt{\$predict\_proba(X)} --- déploiement ;
-  \item \texttt{\$score(X, y)} --- exactitude ;
-  \item \texttt{\$print()} / \texttt{\$summary()} --- restitution.
-\end{itemize}
-Propriétés exposées après \texttt{fit} : \texttt{coefficients},
-\texttt{means}, \texttt{priors}, \texttt{within\_cov}, \texttt{classes},
-\texttt{feature\_names}, etc.
-
-\subsection{Contrats d'entrée}
-
-\begin{itemize}
-  \item \(X\) : data.frame ou matrice, colonnes numériques finies, sans NA ;
-  \item \(y\) : au moins deux classes ; \(n > K\) ;
-  \item à la prédiction, alignement des colonnes \textbf{par nom}.
+\begin{itemize}[leftmargin=*]
+  \item \texttt{LDA\$new(priors, tol)} : cr\'eation du mod\`ele ;
+  \item \texttt{\$fit(X, y)} : apprentissage ;
+  \item \texttt{\$predict(X)} et \texttt{\$predict\_proba(X)} : d\'eploiement ;
+  \item \texttt{\$score(X, y)} : exactitude ;
+  \item \texttt{\$print()} et \texttt{\$summary()} : lecture des r\'esultats.
 \end{itemize}
 
-%----------------------------------------------------------------------
-\section{Pseudo-code des algorithmes}
-%----------------------------------------------------------------------
+Apr\`es \texttt{fit}, le mod\`ele expose notamment \texttt{coefficients},
+\texttt{means}, \texttt{priors}, \texttt{within\_cov}, \texttt{classes} et
+\texttt{feature\_names}.
 
-\subsection{Apprentissage (\texttt{fit})}
+Dans \texttt{coefficients}, chaque colonne correspond \`a une classe. La
+premi\`ere ligne est l'intercept. \`A la pr\'ediction, les colonnes de \(X\)
+sont align\'ees par nom.
+
+\section{Pseudo-code}
+
+\subsection{Apprentissage}
 
 \begin{lstlisting}
 FIT(X, y; priors_user, tol):
-  X <- preparer_et_valider(X)          # numerique, noms uniques
-  y <- factoriser_et_valider(y)
-  counts <- effectifs(y)
-  M <- moyennes_par_classe(X, y, counts)
-  W <- covariance_poolée(X, y, M)      # Xc'Xc / (n-K)
-  (W_inv, pseudo) <- inverser(W, tol)  # Cholesky ou Moore-Penrose
-  pi <- resoudre_priors(priors_user, counts)
+  valider X (numerique, fini, sans NA)
+  valider y (>= 2 classes, n > K)
+  M  <- moyennes par classe
+  W  <- covariance poolee
+  W_inv <- inverse(W) ou pseudo-inverse
+  pi <- priors (defaut = proportions)
   pour chaque classe k:
     a_k  <- W_inv * mu_k
     a0_k <- log(pi_k) - 0.5 * mu_k' * W_inv * mu_k
   stocker coefficients, means, priors, W
-  retourner self
 \end{lstlisting}
 
-\subsection{Prédiction}
+\subsection{Pr\'ediction}
 
 \begin{lstlisting}
 DECISION_FUNCTION(X):
-  X <- aligner_colonnes_par_nom(X, feature_names)
-  S <- X %*% A + a0                    # scores d_k(x)
-  retourner S
+  aligner les colonnes de X sur feature_names
+  retourner a0 + X %*% A
 
 PREDICT(X):
-  retourner classes[argmax_ligne(DECISION_FUNCTION(X))]
+  retourner la classe de score maximal
 
 PREDICT_PROBA(X):
-  retourner softmax_lignes(DECISION_FUNCTION(X))
+  retourner softmax des scores
 \end{lstlisting}
 
-\subsection{Softmax numériquement stable}
+Le softmax retire d'abord le maximum de chaque ligne. Cela limite les probl\`emes
+num\'eriques quand les scores sont tr\`es \'eloign\'es.
 
-Pour chaque ligne de scores \(s\), on calcule
-\(\exp(s_j - \max s) / \sum_j \exp(s_j - \max s)\) afin d'éviter les
-débordements numériques.
+\section{Choix techniques}
 
-%----------------------------------------------------------------------
-\section{Choix d'implémentation}
-%----------------------------------------------------------------------
+L'inversion de \(W\) passe d'abord par une d\'ecomposition de Cholesky. Si
+cela \'echoue, on bascule sur une d\'ecomposition en valeurs propres.
 
-\begin{itemize}
-  \item \textbf{Inversion de \(W\)} : tentative Cholesky (\texttt{chol} /
-    \texttt{chol2inv}) ; repli eigen/pseudo-inverse si matrice mal
-    conditionnée.
-  \item \textbf{API chaînable} : \texttt{fit} retourne \texttt{self} de façon
-    invisible (\texttt{LDA\$new()\$fit(X,y)\$predict(X)}).
-  \item \textbf{Robustesse prédiction} : matching par nom, colonnes
-    supplémentaires ignorées, vecteur nommé accepté pour une observation.
-  \item \textbf{Pas de dépendance algorithmique lourde} : seul \texttt{R6} est
-    en \texttt{Imports} ; \texttt{MASS} sert aux tests de référence.
-\end{itemize}
+Le package d\'epend peu de librairies externes. Seul \texttt{R6} est requis
+pour l'usage courant. \texttt{MASS} sert surtout aux tests de r\'ef\'erence.
+\texttt{shiny} et \texttt{readxl} restent optionnels.
 
-%----------------------------------------------------------------------
 \section{Application Shiny}
-%----------------------------------------------------------------------
 
-L'application (\texttt{inst/shiny/app.R}) permet de :
-\begin{enumerate}
-  \item importer des données (iris enrichi, csv/tsv/txt/xlsx) ;
-  \item choisir cible, variables explicatives numériques et variables
-        illustratives (exclues du modèle) ;
-  \item entraîner via \texttt{LDA\$fit} ;
-  \item évaluer (sur apprentissage ou split stratifié 80/20, graine 2026) ;
-  \item prédire un individu ou un fichier, avec exports CSV.
-\end{enumerate}
-Les métriques affichées (exactitude, précision, rappel, F1, F1 macro,
-exactitude équilibrée) sont descriptives ; elles n'appartiennent pas au cœur
-statistique minimal mais documentent l'usage du modèle.
+L'application se lance apr\`es installation du package :
+\begin{lstlisting}
+shiny::runApp(system.file("shiny", package = "PredLDA"))
+\end{lstlisting}
 
-%----------------------------------------------------------------------
-\section{Tests et validation}
-%----------------------------------------------------------------------
+Elle permet de charger des donn\'ees, de choisir la cible et les variables
+explicatives, d'ajouter des variables illustratives, d'entra\^iner le mod\`ele,
+puis d'\'evaluer et de pr\'edire. Deux modes d'\'evaluation sont propos\'es :
+sur l'apprentissage, ou avec un partage stratifi\'e 80/20 (graine fixe 2026).
 
-Deux batteries principales :
-\begin{itemize}
-  \item \texttt{tests/test-LDA.R} : API, validations, cas singulier, accord
-        avec \texttt{MASS::lda} sur iris ;
-  \item \texttt{tests/test-reference.R} : coefficients confrontés à une
-        formule \og textbook \fg{} indépendante ; jeux iris, mtcars,
-        ToothGrowth, Pima, fgl, crabs ; prédiction hors échantillon Pima.
-\end{itemize}
-L'accord des postérieurs avec \texttt{MASS::lda} \cite{venables2002mass} à une
-tolérance de \(10^{-8}\) constitue la validation externe principale.
+Les captures du parcours sur l'exemple iris sont regroup\'ees en
+annexe~\ref{annexe:shiny}. Elles montrent le choix des donn\'ees, l'ajustement,
+les coefficients, l'\'evaluation et la pr\'ediction d'une nouvelle observation.
 
-%----------------------------------------------------------------------
+\section{Tests}
+
+Deux fichiers principaux couvrent le c\oe ur du package.
+\texttt{tests/test-LDA.R} v\'erifie l'API, les erreurs attendues et l'accord
+avec \texttt{MASS::lda} sur iris.
+\texttt{tests/test-reference.R} compare les coefficients \`a une formule
+ind\'ependante, sur plusieurs jeux de donn\'ees. Un test hors \'echantillon
+utilise aussi Pima.
+
+Sur ces contr\^oles, les post\'erieurs restent align\'es avec
+\texttt{MASS::lda} \cite{venables2002mass} \`a \(10^{-8}\) pr\`es.
+
 \section{Installation et documentation}
-%----------------------------------------------------------------------
 
+Installation depuis GitHub :
 \begin{lstlisting}
 remotes::install_github(
   "thomas-fonferrier/projet-lda-r",
@@ -268,44 +240,127 @@ remotes::install_github(
 )
 \end{lstlisting}
 
-Documentation utilisateur :
-\begin{itemize}
-  \item pages d'aide \texttt{?LDA} (anglais, normes R / roxygen2) ;
-  \item README et vignette \texttt{predlda-intro} (tutoriel reproductible) ;
-  \item fichiers d'exemple dans \texttt{inst/extdata/}.
+Le param\`etre \texttt{subdir} est n\'ecessaire car le package n'est pas \`a la
+racine du d\'ep\^ot. Une archive \texttt{PredLDA\_0.1.0.tar.gz} sert de secours
+si l'installation en ligne n'est pas possible.
+
+La documentation utilisateur comprend :
+\begin{itemize}[leftmargin=*]
+  \item l'aide \texttt{?LDA}, r\'edig\'ee en anglais ;
+  \item le README du package et la vignette \texttt{predlda-intro} ;
+  \item les fichiers d'exemple plac\'es dans \texttt{inst/extdata/}.
 \end{itemize}
 
-%----------------------------------------------------------------------
-\section{Limites et perspectives}
-%----------------------------------------------------------------------
+Un contr\^ole \texttt{R CMD check} a \'et\'e ex\'ecut\'e avec succ\`es. Une
+action GitHub relance ce contr\^ole \`a chaque mise \`a jour de la branche
+principale.
 
-Le cœur actuel exige des prédicteurs numériques. Parmi les extensions prévues
-par le cahier des charges et non finalisées dans le moteur : prétraitement des
-explicatives catégorielles, stratégie automatique de sélection de variables,
-indicateurs de pertinence des variables. L'interface Shiny rend ces limites
-explicites et n'assimile pas la sélection manuelle à une procédure statistique
-automatique.
+\section{Limites}
 
-%----------------------------------------------------------------------
+Le c\oe ur actuel n'accepte que des variables explicatives num\'eriques. Le
+traitement des variables cat\'egorielles, la s\'election automatique de
+variables et des indicateurs de pertinence restent des extensions possibles.
+Dans Shiny, le choix manuel des variables ne remplace pas une proc\'edure
+automatique de s\'election.
+
 \section{Conclusion}
-%----------------------------------------------------------------------
 
-PredLDA fournit une LDA prédictive installable, documentée et testée, avec une
-API R6 claire et une application Shiny de démonstration. L'implémentation suit
-les formules classiques \cite{hastie2009esl} et se valide contre
-\texttt{MASS::lda}.
+PredLDA fournit une LDA pr\'edictive utilisable depuis R et depuis une interface
+Shiny. L'impl\'ementation suit les formules classiques
+\cite{hastie2009esl}. Elle a \'et\'e confront\'ee \`a \texttt{MASS::lda}. Le
+d\'ep\^ot permet une installation directe, avec documentation et exemples.
 
-%----------------------------------------------------------------------
 \bibliographystyle{plain}
 \bibliography{references}
 
 \appendix
-\section{Répartition indicative des modules}
-Les calculs de \texttt{stats\_utils.R} sont internes (non exportés). Seule la
-classe \texttt{LDA} est exportée dans le \texttt{NAMESPACE}.
 
-\section{Jeux d'exemple livrés}
-\texttt{iris\_apprentissage.tsv}, \texttt{iris\_apprentissage\_fr.csv},
-\texttt{iris\_nouveaux.tsv} (également utilisés par l'application Shiny).
+\section{Modules export\'es}
+Les fonctions de \texttt{stats\_utils.R} restent internes. Seule la classe
+\texttt{LDA} est export\'ee dans le \texttt{NAMESPACE}.
+
+\section{Jeux d'exemple}
+Trois fichiers accompagnent le tutoriel et l'application :
+\texttt{iris\_apprentissage.tsv}, \texttt{iris\_apprentissage\_fr.csv} et
+\texttt{iris\_nouveaux.tsv}.
+
+\section{Captures de l'application Shiny}
+\label{annexe:shiny}
+
+Les figures suivantes illustrent un parcours sur l'exemple iris fourni dans
+l'application.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{01_choix_source_donnees.png}
+\caption{Choix de la source de donn\'ees (exemple iris ou import de fichier).}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{02_apercu_donnees.png}
+\caption{Aper\c{c}u des donn\'ees charg\'ees.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{03_choix_variables_evaluation.png}
+\caption{S\'election de la cible, des variables explicatives, des variables
+illustratives et du mode d'\'evaluation.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{04_modele_ajustement.png}
+\caption{Onglet Mod\`ele : r\'esum\'e de l'ajustement et r\'epartition des classes.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{05_modele_coefficients.png}
+\caption{Coefficients des fonctions de classification.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{06_modele_moyennes.png}
+\caption{Moyennes par classe.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{07_evaluation_indicateurs.png}
+\caption{Indicateurs globaux d'\'evaluation.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{08_evaluation_par_classe.png}
+\caption{Pr\'ecision, rappel et F1 par classe.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{09_matrice_confusion.png}
+\caption{Matrice de confusion (lignes observ\'ees, colonnes pr\'edites).}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{10_prediction_saisie.png}
+\caption{Saisie d'une nouvelle observation \`a pr\'edire.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{11_prediction_resultat.png}
+\caption{R\'esultat de pr\'ediction pour une nouvelle observation.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{12_section_aide.png}
+\caption{Onglet Aide de l'application.}
+\end{figure}
 
 \end{document}

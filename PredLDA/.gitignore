@@ -6,8 +6,9 @@
 *.tar.gz
 *.Rcheck/
 inst/doc
+.DS_Store
 
-# LaTeX build files of the report
+# Fichiers auxiliaires LaTeX (garder .tex, .bib, images et PDF finaux)
 report/*.aux
 report/*.bbl
 report/*.blg
@@ -15,6 +16,5 @@ report/*.log
 report/*.out
 report/*.toc
 report/*.synctex.gz
-report/*.pdf
 report/*.fls
 report/*.fdb_latexmk

@@ -1,0 +1,398 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{fancyhdr}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  showstringspaces=false,
+  keepspaces=true,
+  backgroundcolor=\color{gray!5},
+  extendedchars=true,
+  literate=
+    {é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {ë}{{\"e}}1
+    {à}{{\`a}}1 {â}{{\^a}}1
+    {ù}{{\`u}}1 {û}{{\^u}}1
+    {ô}{{\^o}}1 {ö}{{\"o}}1
+    {î}{{\^i}}1 {ï}{{\"i}}1
+    {ç}{{\c{c}}}1
+    {É}{{\'E}}1 {È}{{\`E}}1 {À}{{\`A}}1 {Ç}{{\c{C}}}1
+    {–}{{-}}1 {—}{{--}}1
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small PredLDA --- Int\'egration \& livraison}
+\fancyhead[R]{\small \'Equipe G}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{%
+  PredLDA\\[0.35em]
+  \large Mise en production, int\'egration DevOps\\ et livraison du package R\\[0.4em]
+  \normalsize Rapport d'int\'egration --- M2 SISE Programmation R 2026--2027}
+\author{Thomas Fonferrier\\[0.2em]
+{\small Avec Ryan Ducret, Aya Saadi, Xilian Jing --- \'Equipe G}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Ce document d\'ecrit \textbf{tout le travail d'int\'egration} r\'ealis\'e pour
+mettre en production et livrer le package R \texttt{PredLDA} : architecture du
+d\'ep\^ot GitHub, m\'etadonn\'ees du package, documentation anglaise aux normes~R,
+tutoriel reproductible, jeux d'exemple, application Shiny embarqu\'ee,
+int\'egration continue, artefacts de livraison (\texttt{.tar.gz}, rapports) et
+proc\'edure de validation d'installation. Il se concentre sur la
+\emph{cha\^ine de livraison}, compl\'ementaire au rapport m\'ethodologique LDA.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+
+\section{Contexte et objectifs de l'int\'egration}
+
+Le cahier des charges impose un package :
+\begin{itemize}[leftmargin=*]
+  \item installable \textbf{directement depuis GitHub} ;
+  \item document\'e en anglais aux normes R (\texttt{?LDA} comparable \`a \texttt{?glm}) ;
+  \item accompagn\'e d'un \textbf{tutoriel reproductible} et de jeux d'exemple ;
+  \item livr\'e avec une application Shiny, un rapport LaTeX et un plan~B hors
+        ligne (archive \texttt{.tar.gz}).
+\end{itemize}
+
+Le r\^ole d'int\'egration (DevOps l\'eger) consiste \`a transformer un code
+algorithmique et une application Shiny en un \textbf{produit R livrable} :
+structure standard, m\'etadonn\'ees valides, documentation, tests, CI et
+proc\'edure de v\'erification \og comme le destinataire final \fg{}.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{@{}lp{9.2cm}@{}}
+\toprule
+Notion & \'Equivalent concret ici \\
+\midrule
+Build & \texttt{R CMD build} / \texttt{devtools::build()} \\
+Contr\^ole qualit\'e & \texttt{R CMD check} / \texttt{devtools::check()} \\
+Distribution & GitHub + \texttt{remotes::install\_github} \\
+CI & GitHub Actions (\texttt{R-CMD-check}) \\
+Artefact plan~B & \texttt{PredLDA\_0.1.0.tar.gz} \\
+Documentation runtime & pages Rd + vignette + README \\
+\bottomrule
+\end{tabular}
+\caption{Correspondance DevOps $\leftrightarrow$ \'ecosyst\`eme package R.}
+\end{table}
+
+\section{Architecture du d\'ep\^ot et du package}
+
+\subsection{Organisation GitHub}
+
+Le d\'ep\^ot
+\url{https://github.com/thomas-fonferrier/projet-lda-r}
+h\'eberge le package dans le sous-dossier \texttt{PredLDA/} (et non \`a la
+racine). Cette organisation impose le param\`etre
+\texttt{subdir = "PredLDA"} lors de l'installation GitHub.
+
+\`A la racine du d\'ep\^ot ont \'et\'e ajout\'es :
+\begin{itemize}[leftmargin=*]
+  \item \texttt{README.md} --- point d'entr\'ee (install, quick start, liens) ;
+  \item \texttt{.gitignore} --- exclusion des artefacts locaux ;
+  \item \texttt{.github/workflows/R-CMD-check.yml} --- int\'egration continue.
+\end{itemize}
+
+\subsection{Structure du package}
+
+\begin{lstlisting}
+PredLDA/
+|-- DESCRIPTION          # identite, auteurs, dependances
+|-- NAMESPACE            # exports (genere par roxygen2)
+|-- LICENSE              # MIT
+|-- README.md            # tutoriel EN reproductible
+|-- R/
+|   |-- lda_r6.R         # classe publique LDA + doc roxygen
+|   +-- stats_utils.R    # briques statistiques internes
+|-- man/                 # aide ?LDA (Rd)
+|-- tests/               # tests unitaires / reference MASS
+|-- vignettes/           # vignette predlda-intro
+|-- inst/
+|   |-- extdata/         # jeux d'exemple du tutoriel
+|   +-- shiny/           # application Shiny + examples/
+|-- data-raw/            # scripts de sync des exemples
++-- report/              # sources LaTeX (exclus du build R)
+\end{lstlisting}
+
+Points d'int\'egration importants :
+\begin{itemize}[leftmargin=*]
+  \item \texttt{report/} est list\'e dans \texttt{.Rbuildignore} : le rapport
+        n'est pas embarqu\'e dans le package install\'e ;
+  \item les placeholders vides \texttt{ui.R}/\texttt{server.R}/\texttt{global.R}
+        ont \'et\'e supprim\'es : l'app est enti\`erement dans \texttt{app.R} ;
+  \item \texttt{inst/extdata/} expose les m\^emes fichiers d'exemple que Shiny
+        via \texttt{system.file("extdata", ...)}.
+\end{itemize}
+
+\section{M\'etadonn\'ees DESCRIPTION et correction Authors@R}
+
+\subsection{Contenu livr\'e}
+
+Le fichier \texttt{DESCRIPTION} d\'eclare le titre, la version \texttt{0.1.0},
+la licence MIT, les quatre auteurs de l'\'equipe~G, \texttt{Imports: R6}, les
+\texttt{Suggests} (MASS, shiny, readxl, knitr, rmarkdown),
+\texttt{VignetteBuilder: knitr}, ainsi que \texttt{URL}/\texttt{BugReports}.
+
+\subsection{Incident de production corrig\'e}
+
+Une premi\`ere installation GitHub a \'echou\'e avec le message :
+\begin{lstlisting}
+Authors@R field gives no person with maintainer role,
+valid email address and non-empty name.
+\end{lstlisting}
+Cause : syntaxe R invalide.
+\begin{lstlisting}
+# Incorrect : "cre" n'est PAS un role
+role = "aut", "cre"
+
+# Correct
+role = c("aut", "cre")
+\end{lstlisting}
+Sans le r\^ole \texttt{cre} (maintainer), \texttt{R CMD build} refuse le package.
+Correction pouss\'ee sur GitHub : Ryan Ducret est \texttt{[aut, cre]}.
+
+\textbf{Le\c{c}on DevOps :} valider \texttt{Authors@R} avant tout push destin\'e
+\`a \texttt{install\_github}.
+
+\section{Documentation anglaise aux normes R}
+
+La documentation est \'ecrite en roxygen2 dans \texttt{R/lda\_r6.R}, puis
+r\'eg\'en\'er\'ee par :
+\begin{lstlisting}
+devtools::document("PredLDA")
+\end{lstlisting}
+Cela produit \texttt{man/LDA.Rd}, \texttt{man/PredLDA-package.Rd} et met \`a jour
+le \texttt{NAMESPACE}.
+
+La page \texttt{?LDA} documente d\'esormais :
+\begin{itemize}[leftmargin=*]
+  \item l'API (\texttt{new}, \texttt{fit}, \texttt{predict},
+        \texttt{predict\_proba}, \texttt{score}, \texttt{print}, \texttt{summary}) ;
+  \item les param\`etres et champs expos\'es ;
+  \item une section \textbf{Reading the results} (une colonne = une classe,
+        intercept en premi\`ere ligne, softmax, matching par nom, cas binaire
+        $D(x)$) ;
+  \item des exemples ex\'ecutables, y compris un fichier \texttt{extdata}.
+\end{itemize}
+
+\section{Tutoriel reproductible et jeux d'exemple}
+
+Trois niveaux :
+\begin{enumerate}[leftmargin=*]
+  \item README racine du d\'ep\^ot --- installation GitHub et quick start ;
+  \item \texttt{PredLDA/README.md} --- tutoriel EN complet ;
+  \item vignette \texttt{predlda-intro} ---
+        \texttt{vignette("predlda-intro", package = "PredLDA")}.
+\end{enumerate}
+
+Fichiers livr\'es dans \texttt{inst/extdata/} :
+\texttt{iris\_apprentissage.tsv}, \texttt{iris\_apprentissage\_fr.csv},
+\texttt{iris\_nouveaux.tsv}.
+
+\begin{lstlisting}
+ex <- system.file("extdata", "iris_nouveaux.tsv", package = "PredLDA")
+newdata <- read.delim(ex, check.names = FALSE)
+\end{lstlisting}
+
+\section{Application Shiny embarqu\'ee}
+
+L'application est livr\'ee sous \texttt{inst/shiny/} :
+\begin{lstlisting}
+shiny::runApp(system.file("shiny", package = "PredLDA"))
+\end{lstlisting}
+Le tutoriel Shiny EN d\'etaille un parcours reproductible (iris, split 80/20,
+pr\'ediction individu/fichier). Les d\'ependances Shiny sont en
+\texttt{Suggests}.
+
+\section{Contr\^ole qualit\'e : tests, check et CI}
+
+\subsection{Tests}
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{tests/test-LDA.R} --- API, validations, accord \texttt{MASS::lda} ;
+  \item \texttt{tests/test-reference.R} --- formules textbook + hors-\'echantillon ;
+  \item \texttt{inst/shiny/tests/test-server.R} --- logique serveur Shiny.
+\end{itemize}
+
+\subsection{R CMD check}
+
+\begin{lstlisting}
+devtools::check("PredLDA", args = c("--no-manual"))
+# Status: OK
+\end{lstlisting}
+
+\subsection{GitHub Actions}
+
+Le workflow \texttt{.github/workflows/R-CMD-check.yml} se d\'eclenche \`a chaque
+\texttt{push}/\texttt{pull\_request} sur \texttt{main}, avec
+\texttt{working-directory: PredLDA}, pour d\'etecter toute r\'egression avant
+livraison.
+
+\section{Cha\^ine de build et artefacts}
+
+\subsection{Archive source (plan B)}
+
+\begin{lstlisting}
+devtools::build("PredLDA")
+# -> PredLDA_0.1.0.tar.gz
+
+install.packages("PredLDA_0.1.0.tar.gz",
+                 repos = NULL, type = "source")
+\end{lstlisting}
+
+\subsection{Installation en ligne}
+
+\begin{lstlisting}
+remotes::install_github(
+  "thomas-fonferrier/projet-lda-r",
+  subdir = "PredLDA",
+  upgrade = "never"
+)
+\end{lstlisting}
+
+\subsection{Flux de mise en production}
+
+\begin{enumerate}[leftmargin=*]
+  \item Int\'egrer le code dans \texttt{PredLDA/} ;
+  \item \texttt{devtools::document()} puis tests locaux ;
+  \item \texttt{devtools::check()} jusqu'\`a \texttt{Status: OK} ;
+  \item commit + push sur \texttt{main} ;
+  \item v\'erifier GitHub Actions ;
+  \item tester \texttt{install\_github} en session R propre ;
+  \item reconstruire \texttt{.tar.gz} et PDF ;
+  \item d\'eposer sur le drive + mail au responsable.
+\end{enumerate}
+
+\section{Proc\'edure de validation \og comme le professeur \fg{}}
+
+Dans RStudio, sans d\'ependre du dossier local :
+
+\begin{lstlisting}
+try(remove.packages("PredLDA"), silent = TRUE)
+remotes::install_github(
+  "thomas-fonferrier/projet-lda-r",
+  subdir = "PredLDA",
+  upgrade = "never",
+  force = TRUE
+)
+library(PredLDA)
+?LDA
+vignette("predlda-intro", package = "PredLDA")
+
+model <- LDA$new()
+model$fit(iris[, 1:4], iris$Species)
+model$predict(iris[c(1, 51, 101), 1:4])
+
+shiny::runApp(system.file("shiny", package = "PredLDA"))
+\end{lstlisting}
+
+Checklist : installation OK, \texttt{?LDA} lisible, vignette accessible,
+\texttt{extdata} non vide, Shiny d\'emarre depuis le package install\'e.
+
+\section{Inventaire des livrables d'int\'egration}
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{@{}p{4.0cm}p{8.4cm}@{}}
+\toprule
+Livrable & Impl\'ementation r\'ealis\'ee \\
+\midrule
+Install GitHub & README + \texttt{subdir} + DESCRIPTION valide \\
+Maintainer & Correction \texttt{Authors@R} (\texttt{c("aut","cre")}) \\
+Aide EN & Roxygen enrichi + \texttt{man/*.Rd} \\
+Tutoriel EN & README package + vignette \texttt{predlda-intro} \\
+Jeux d'exemple & \texttt{inst/extdata/} + sync \texttt{data-raw/} \\
+Shiny livrable & \texttt{inst/shiny/app.R}, via \texttt{system.file} \\
+CI & GitHub Actions R-CMD-check \\
+Plan B & \texttt{PredLDA\_0.1.0.tar.gz} build\'e et test\'e \\
+Qualit\'e & \texttt{R CMD check} : Status OK \\
+Rapports & \texttt{rapport.tex} + \texttt{rapport\_integration.tex} \\
+\bottomrule
+\end{tabular}
+\caption{Synth\`ese des livrables d'int\'egration.}
+\end{table}
+
+\section{Limites restantes}
+
+Hors p\'erim\`etre de cette int\'egration (\'equipe algo / suite) :
+pr\'etraitement des variables cat\'egorielles, s\'election automatique de
+variables, indicateurs de pertinence, enrichissement \'eventuel du rapport
+m\'ethodologique (captures Shiny, r\'esultats d\'etaill\'es).
+
+\section{Conclusion}
+
+La mise en production de PredLDA repose sur une cha\^ine compl\`ete : d\'ep\^ot
+GitHub structur\'e, m\'etadonn\'ees valides, documentation et tutoriel anglais,
+exemples embarqu\'es, check R + CI, archive hors ligne et test d'installation en
+session propre. Ces \'el\'ements permettent de \textbf{livrer} le package
+conform\'ement au cahier des charges.
+
+\vspace{1em}
+\noindent\textbf{D\'ep\^ot :}
+\url{https://github.com/thomas-fonferrier/projet-lda-r}
+
+\appendix
+\section{Commandes rapides}
+
+\begin{lstlisting}
+# Qualite locale
+Rscript -e 'devtools::document("PredLDA")'
+Rscript -e 'devtools::check("PredLDA", args="--no-manual")'
+Rscript -e 'devtools::build("PredLDA", path=".")'
+
+# Publication
+git add -A
+git commit -m "Release integration docs"
+git push
+\end{lstlisting}
+
+\section{Trame du mail de rendu}
+
+\begin{lstlisting}
+A : ricco.rakotomalala@univ-lyon2.fr
+Objet : [SISE - Prog. R - Equipe G] Fonferrier Ducret Saadi Jing
+
+Bonjour,
+
+Lien du projet PredLDA :
+https://github.com/thomas-fonferrier/projet-lda-r
+
+Livrables : package installable (subdir PredLDA), application Shiny,
+tutoriel EN, archive PredLDA_0.1.0.tar.gz, rapports PDF/LaTeX.
+
+Cordialement,
+Equipe G
+\end{lstlisting}
+
+\end{document}

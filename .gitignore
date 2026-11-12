@@ -1,7 +1,12 @@
 .DS_Store
+**/.DS_Store
 .Rproj.user/
 .Rhistory
 .RData
 *.Rcheck/
 PredLDA_*.tar.gz
 PredLDA_*.zip
+
+# Fichiers internes / sujet (hors livraison)
+M2 SISE 2026 2027 - Equipes Projet R.xlsx
+Sujet Projet SISE - Prog R - 2026 2027.pdf
