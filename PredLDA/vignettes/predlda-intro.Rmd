@@ -1,0 +1,107 @@
+---
+title: "Introduction to PredLDA"
+author: "PredLDA authors (Team G)"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to PredLDA}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 4
+)
+```
+
+# Overview
+
+**PredLDA** implements predictive linear discriminant analysis through an R6
+class aligned with scikit-learn conventions: `fit()`, `predict()`,
+`predict_proba()`, `score()`, `print()` and `summary()`.
+
+```{r}
+library(PredLDA)
+```
+
+# Fit and inspect a model
+
+```{r}
+model <- LDA$new()
+model$fit(iris[, 1:4], iris$Species)
+model
+```
+
+Classification functions are stored in `coefficients` (one column per class,
+intercept in the first row):
+
+```{r}
+round(model$coefficients, 3)
+```
+
+Class means and priors:
+
+```{r}
+round(model$means, 3)
+model$priors
+```
+
+# Predict classes and probabilities
+
+```{r}
+new_obs <- iris[c(1, 51, 101), 1:4]
+model$predict(new_obs)
+round(model$predict_proba(new_obs), 4)
+model$score(iris[, 1:4], iris$Species)
+```
+
+Columns of `X` are matched **by name** at prediction time, so column order may
+differ from training.
+
+# Example files shipped with the package
+
+```{r}
+extdir <- system.file("extdata", package = "PredLDA")
+list.files(extdir)
+
+train <- read.delim(file.path(extdir, "iris_apprentissage.tsv"),
+                    check.names = FALSE)
+newdata <- read.delim(file.path(extdir, "iris_nouveaux.tsv"),
+                      check.names = FALSE)
+
+xcols <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+m <- LDA$new()$fit(train[, xcols], train$Species)
+data.frame(
+  predicted = as.character(m$predict(newdata)),
+  round(m$predict_proba(newdata[, xcols]), 4),
+  Identifiant = newdata$Identifiant
+)
+```
+
+# Shiny application
+
+```r
+# Requires Suggests package 'shiny'
+shiny::runApp(system.file("shiny", package = "PredLDA"))
+```
+
+See `system.file("shiny/README.md", package = "PredLDA")` for a click-by-click
+reproducible walkthrough.
+
+# Reading `summary()`
+
+```{r}
+invisible(model$summary())
+```
+
+For two-class problems, `summary()` also prints
+\(D(x) = d_1(x) - d_2(x)\). Predict class 1 when \(D(x) > 0\).
+
+# See also
+
+- `?LDA` for full parameter and field documentation
+- Package README on GitHub for the complete tutorial

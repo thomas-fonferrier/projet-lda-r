@@ -1,0 +1,7 @@
+.DS_Store
+.Rproj.user/
+.Rhistory
+.RData
+*.Rcheck/
+PredLDA_*.tar.gz
+PredLDA_*.zip

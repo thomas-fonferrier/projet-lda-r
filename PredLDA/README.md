@@ -4,50 +4,170 @@ Predictive linear discriminant analysis (LDA) in R, through an R6 class whose
 interface follows the scikit-learn conventions: `fit()`, `predict()`,
 `predict_proba()`, `score()`, `print()` and `summary()`.
 
+This README is the **reproducible English tutorial** required by the project
+brief. It shows `$fit()` / reading outputs, prediction on shipped example
+files, and how to launch the Shiny application.
+
 ## Installation
 
+From GitHub (package lives in the `PredLDA/` subdirectory of the repository):
+
 ```r
-# Installer remotes si nécessaire : install.packages("remotes")
+install.packages("remotes")
+remotes::install_github(
+  "thomas-fonferrier/projet-lda-r",
+  subdir = "PredLDA",
+  upgrade = "never"
+)
+```
+
+From a local clone of the repository:
+
+```r
 remotes::install_local("PredLDA")
 ```
 
-## Usage
+Offline plan B (source archive):
+
+```r
+# From the repository root, after devtools::build("PredLDA")
+install.packages("PredLDA_0.1.0.tar.gz", repos = NULL, type = "source")
+```
+
+Suggested packages: `MASS` (reference checks), `shiny` and optionally `readxl`
+(Shiny app), `knitr` / `rmarkdown` (vignette).
+
+## Tutorial 1 — Fit, read outputs, predict
 
 ```r
 library(PredLDA)
 
 model <- LDA$new()
 model$fit(iris[, 1:4], iris$Species)
-model$coefficients            # Une fonction de classification par classe
+
+# Compact view
+model
+
+# Detailed view: class counts, priors, means, classification functions
+model$summary()
+```
+
+### How to read the main outputs
+
+| Object | Meaning |
+|--------|---------|
+| `model$coefficients` | One **column per class**. First row = intercept \(a_{0k}\); other rows = slope vector \(a_k\). Score \(d_k(x)=a_{0k}+a_k^\top x\). |
+| `model$means` | Class means \(\mu_k\) (classes in rows). |
+| `model$priors` | Prior probabilities \(\pi_k\) (default: training proportions). |
+| `model$within_cov` | Pooled within-class covariance \(W\). |
+| `model$predict(X)` | Predicted class (factor). Columns of `X` are matched **by name**. |
+| `model$predict_proba(X)` | Posterior probabilities (softmax of scores); each row sums to 1. |
+| `model$score(X, y)` | Accuracy on `(X, y)`. |
+
+```r
+model$coefficients
+model$means
+model$priors
 
 new_obs <- iris[c(1, 51, 101), 1:4]
 model$predict(new_obs)
 model$predict_proba(new_obs)
-model$summary()
+model$score(iris[, 1:4], iris$Species)  # typically about 0.98 on iris
 ```
 
-## Layout
+Binary problems use the same engine. `summary()` additionally prints
+\(D(x)=d_1(x)-d_2(x)\); predict class 1 when \(D(x)>0\).
 
-| Path | Content |
-|------|---------|
-| `R/lda_r6.R` | `LDA` R6 class (input checks, public interface, printing) |
-| `R/stats_utils.R` | Statistical computations: class means, pooled within-class covariance, (pseudo-)inverse, priors, classification functions, softmax |
-| `tests/` | Unit tests and validation against `MASS::lda` |
-| `inst/shiny/` | Shiny application |
-| `report/` | LaTeX report |
-
-## Shiny application
-
-Install `shiny` before launching the app. Install `readxl` if you need Excel input.
+Optional custom priors:
 
 ```r
-# Lancer depuis la racine du dépôt
-shiny::runApp("PredLDA/inst/shiny")
+model2 <- LDA$new(priors = c(setosa = 0.5, versicolor = 0.3, virginica = 0.2))
+model2$fit(iris[, 1:4], iris$Species)
+```
 
-# Ou lancer la version incluse dans le package installé
+## Tutorial 2 — Example datasets shipped with the package
+
+After installation, example files are available under `extdata/` (and mirrored
+for the Shiny app under `shiny/examples/`):
+
+```r
+list.files(system.file("extdata", package = "PredLDA"))
+# iris_apprentissage.tsv
+# iris_apprentissage_fr.csv
+# iris_nouveaux.tsv
+
+train_path <- system.file("extdata", "iris_apprentissage.tsv", package = "PredLDA")
+new_path   <- system.file("extdata", "iris_nouveaux.tsv", package = "PredLDA")
+
+train <- read.delim(train_path, check.names = FALSE)
+newdata <- read.delim(new_path, check.names = FALSE)
+
+xcols <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+m <- LDA$new()$fit(train[, xcols], train$Species)
+
+# Target column is not required for prediction; extra columns (IDs) are ignored
+m$predict(newdata)
+m$predict_proba(newdata[, xcols])
+```
+
+French CSV variant (semicolon + decimal comma):
+
+```r
+fr <- system.file("extdata", "iris_apprentissage_fr.csv", package = "PredLDA")
+train_fr <- read.table(fr, header = TRUE, sep = ";", dec = ",", check.names = FALSE)
+```
+
+## Tutorial 3 — Shiny application
+
+Install `shiny` (and `readxl` only if you need Excel uploads):
+
+```r
+install.packages("shiny")
+# install.packages("readxl")  # optional
+
 shiny::runApp(system.file("shiny", package = "PredLDA"))
 ```
 
-See the [English Shiny tutorial](inst/shiny/README.md) for a reproducible example, input formats, prediction, evaluation definitions and interface limits. Example input files are provided in [inst/shiny/examples/](inst/shiny/examples/).
+From a repository clone:
 
-The app uses numeric predictors supported by the current core. Manual predictor selection is not automatic statistical feature selection. Categorical-predictor preprocessing and variable-relevance methods remain algorithm-team integration items.
+```r
+shiny::runApp("PredLDA/inst/shiny")
+```
+
+Reproducible click-path (also documented in
+[inst/shiny/README.md](inst/shiny/README.md)):
+
+1. Keep **Exemple iris**, target `Species`, four numeric predictors, illustrative
+   `Identifiant` / `Lot`.
+2. Click **Entraîner le modèle** (training evaluation → accuracy about 0.98).
+3. Switch evaluation to stratified 80/20 (seed 2026), retrain (120 / 30 split).
+4. In **Prédictions**, enter `5.1, 3.5, 1.4, 0.2` → expected class `setosa`.
+5. Or upload `inst/shiny/examples/iris_nouveaux.tsv` for batch prediction.
+
+## Package layout
+
+| Path | Content |
+|------|---------|
+| `R/lda_r6.R` | `LDA` R6 class (validation, public API, printing) |
+| `R/stats_utils.R` | Means, pooled covariance, (pseudo-)inverse, priors, scores, softmax |
+| `man/` | Rd help generated by roxygen2 (`?LDA`) |
+| `tests/` | Unit tests and agreement checks vs `MASS::lda` |
+| `inst/extdata/` | Example tabular datasets for the tutorial |
+| `inst/shiny/` | Shiny application + examples + server-logic tests |
+| `vignettes/` | Package vignette `predlda-intro` |
+| `report/` | French LaTeX report sources (excluded from the R package build) |
+
+## Help pages
+
+```r
+help(package = "PredLDA")
+?LDA
+vignette("predlda-intro", package = "PredLDA")
+```
+
+## Scope notes
+
+The current numerical core supports **numeric** predictors. Manual selection in
+Shiny is not automatic feature selection. Categorical-predictor encoding and
+variable-relevance diagnostics remain optional extensions beyond the shipped
+core.

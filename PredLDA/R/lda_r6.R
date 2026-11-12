@@ -1,6 +1,16 @@
 #' PredLDA: Predictive Linear Discriminant Analysis
 #'
-#' Provides the R6 class \code{\link{LDA}}.
+#' Provides the R6 class \code{\link{LDA}} for predictive linear discriminant
+#' analysis with a scikit-learn-like interface.
+#'
+#' @details
+#' After installation, see \code{vignette("predlda-intro", package = "PredLDA")}
+#' and the package README for a reproducible tutorial. Example tabular files
+#' used by the tutorial and the Shiny app are shipped under
+#' \code{system.file("extdata", package = "PredLDA")} and
+#' \code{system.file("shiny/examples", package = "PredLDA")}.
+#'
+#' @seealso \code{\link{LDA}}
 #'
 #' @keywords internal
 "_PACKAGE"
@@ -19,6 +29,32 @@
 #' assigned to the class with the highest score. If \eqn{W} is singular, a
 #' pseudo-inverse is used and a warning is issued. Variables must be numeric.
 #'
+#' \subsection{Reading the results}{
+#' \itemize{
+#'   \item \code{coefficients}: matrix with one column per class. Row
+#'     \code{(Intercept)} holds \eqn{a_{0k}}; the remaining rows hold
+#'     \eqn{a_k}. Larger score \eqn{d_k(x)} means stronger evidence for class
+#'     \eqn{k}. Coefficient magnitude alone is not a variable-importance
+#'     ranking (units and correlations matter).
+#'   \item \code{means}: class means used to build the classification
+#'     functions (classes in rows, variables in columns).
+#'   \item \code{priors}: prior probabilities \eqn{\pi_k} (default: training
+#'     class proportions).
+#'   \item \code{within_cov}: pooled within-class covariance \eqn{W}.
+#'   \item \code{predict(X)}: predicted class labels (factor with training
+#'     levels). At prediction time, columns of \code{X} are matched by name
+#'     to \code{feature_names}; order may differ and extra columns are
+#'     ignored.
+#'   \item \code{predict_proba(X)}: posterior class probabilities obtained by
+#'     a row-wise softmax of the classification scores. Each row sums to 1.
+#'   \item \code{score(X, y)}: classification accuracy (proportion of correct
+#'     labels).
+#'   \item \code{summary()}: prints class distribution, means and
+#'     coefficients. For binary problems it also prints
+#'     \eqn{D(x) = d_1(x) - d_2(x)}; predict class 1 when \eqn{D(x) > 0}.
+#' }
+#' }
+#'
 #' @references
 #' Hastie T., Tibshirani R., Friedman J. (2009). \emph{The Elements of
 #' Statistical Learning}, 2nd ed., Springer, section 4.3.
@@ -28,11 +64,22 @@
 #' @examples
 #' model <- LDA$new()
 #' model$fit(iris[, 1:4], iris$Species)
+#'
+#' # One classification function per class (intercept in the first row)
 #' model$coefficients
+#'
 #' new_obs <- iris[c(1, 51, 101), 1:4]
 #' model$predict(new_obs)
-#' model$predict_proba(new_obs)
+#' model$predict_proba(new_obs)   # rows sum to 1
+#' model$score(iris[, 1:4], iris$Species)
 #' model$summary()
+#'
+#' # Example files shipped with the package
+#' ex <- system.file("extdata", "iris_nouveaux.tsv", package = "PredLDA")
+#' if (nzchar(ex)) {
+#'   newdata <- read.delim(ex, check.names = FALSE)
+#'   model$predict(newdata[, 1:4])
+#' }
 #'
 #' @importFrom R6 R6Class
 #' @export

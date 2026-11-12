@@ -1,0 +1,311 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{caption}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  showstringspaces=false
+}
+
+\title{PredLDA\\[0.4em]
+\large Package R d'analyse discriminante linéaire prédictive\\[0.3em]
+\normalsize M2 SISE --- Programmation R --- 2026--2027}
+\author{
+Thomas Fonferrier \and Ryan Ducret \and Aya Saadi \and Xilian Jing\\
+Équipe G
+}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Ce rapport présente \textbf{PredLDA}, un package R proposant l'analyse
+discriminante linéaire (LDA) prédictive via une classe R6 d'interface proche de
+scikit-learn (\texttt{fit}, \texttt{predict}, \texttt{predict\_proba}). Nous
+décrivons les formules, l'architecture logicielle, le pseudo-code des
+algorithmes, l'application Shiny de démonstration, les tests de validation et
+les limites actuelles du cœur numérique.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+
+%----------------------------------------------------------------------
+\section{Introduction et objectifs}
+%----------------------------------------------------------------------
+
+L'objectif du projet est de livrer un package R installable depuis GitHub,
+accompagné d'une aide aux normes R (anglais), d'un tutoriel reproductible, d'une
+application Shiny et du présent rapport. Le cœur statistique implémente la LDA
+prédictive pour une cible catégorielle à \(K \ge 2\) classes, en exposant les
+fonctions de classification linéaires.
+
+Le dépôt GitHub est
+\url{https://github.com/thomas-fonferrier/projet-lda-r}
+(sous-dossier installable \texttt{PredLDA/}).
+
+%----------------------------------------------------------------------
+\section{Rappels méthodologiques : LDA prédictive}
+%----------------------------------------------------------------------
+
+\subsection{Hypothèses et notation}
+
+Soient \(X \in \mathbb{R}^{n \times p}\) les variables explicatives numériques
+et \(y\) une variable cible à \(K\) modalités. Pour chaque classe \(k\), on note
+\(\mu_k\) la moyenne empirique, \(\pi_k\) la probabilité a priori, et \(W\) la
+matrice de covariance intra-classe \emph{poolée}. Sous l'hypothèse de
+covariances égales entre classes, la règle de Bayes conduit à des scores
+linéaires \cite{hastie2009esl}.
+
+\subsection{Fonctions de classification}
+
+Pour chaque classe \(k\) :
+\begin{align}
+  a_k &= W^{-1} \mu_k, \\
+  a_{0k} &= \log \pi_k - \tfrac{1}{2} \mu_k^\top W^{-1} \mu_k, \\
+  d_k(x) &= a_{0k} + a_k^\top x.
+\end{align}
+La classe prédite est \(\arg\max_k d_k(x)\). Les probabilités a posteriori sont
+obtenues par softmax des scores \(d_k(x)\).
+
+\subsection{Covariance poolée}
+
+Après centrage de chaque observation sur la moyenne de sa classe
+(\(X_c\)), on estime
+\begin{equation}
+  W = \frac{X_c^\top X_c}{n - K}.
+\end{equation}
+Si \(W\) est singulière (variables colinéaires ou constantes), une
+pseudo-inverse de Moore--Penrose est utilisée et un avertissement est émis.
+
+\subsection{Priors}
+
+Par défaut, \(\pi_k = n_k / n\). L'utilisateur peut fournir un vecteur de
+priors strictement positifs (renormalisé). Les priors n'affectent que les
+intercepts via \(\log \pi_k\).
+
+\subsection{Cas binaire}
+
+Pour \(K=2\), la comparaison de \(d_1\) et \(d_2\) est équivalente à
+\(D(x)=d_1(x)-d_2(x)\). La méthode reste identique au cas multi-classes ;
+\(D(x)\) n'est qu'une réécriture pédagogique affichée par \texttt{summary()}.
+
+%----------------------------------------------------------------------
+\section{Architecture du package}
+%----------------------------------------------------------------------
+
+\subsection{Organisation des modules}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+Élément & Rôle \\
+\midrule
+\texttt{R/stats\_utils.R} & Briques statistiques internes \\
+\texttt{R/lda\_r6.R} & Classe publique \texttt{LDA} (R6) \\
+\texttt{man/} & Aide Rd générée par roxygen2 \\
+\texttt{tests/} & Tests unitaires et référence \texttt{MASS::lda} \\
+\texttt{inst/extdata/} & Jeux d'exemple du tutoriel \\
+\texttt{inst/shiny/} & Application Shiny embarquée \\
+\texttt{vignettes/} & Vignette \texttt{predlda-intro} \\
+\texttt{report/} & Sources LaTeX de ce rapport \\
+\bottomrule
+\end{tabular}
+\caption{Architecture du package PredLDA.}
+\end{table}
+
+La séparation volontaire est : \emph{calculs purs} dans
+\texttt{stats\_utils.R}, \emph{validation / API / stockage} dans la classe R6.
+L'application Shiny n'implémente pas l'algorithme ; elle appelle les méthodes
+publiques du package.
+
+\subsection{Interface publique (R6)}
+
+Alignement sur scikit-learn :
+\begin{itemize}
+  \item \texttt{LDA\$new(priors, tol)} --- constructeur ;
+  \item \texttt{\$fit(X, y)} --- apprentissage ;
+  \item \texttt{\$predict(X)} / \texttt{\$predict\_proba(X)} --- déploiement ;
+  \item \texttt{\$score(X, y)} --- exactitude ;
+  \item \texttt{\$print()} / \texttt{\$summary()} --- restitution.
+\end{itemize}
+Propriétés exposées après \texttt{fit} : \texttt{coefficients},
+\texttt{means}, \texttt{priors}, \texttt{within\_cov}, \texttt{classes},
+\texttt{feature\_names}, etc.
+
+\subsection{Contrats d'entrée}
+
+\begin{itemize}
+  \item \(X\) : data.frame ou matrice, colonnes numériques finies, sans NA ;
+  \item \(y\) : au moins deux classes ; \(n > K\) ;
+  \item à la prédiction, alignement des colonnes \textbf{par nom}.
+\end{itemize}
+
+%----------------------------------------------------------------------
+\section{Pseudo-code des algorithmes}
+%----------------------------------------------------------------------
+
+\subsection{Apprentissage (\texttt{fit})}
+
+\begin{lstlisting}
+FIT(X, y; priors_user, tol):
+  X <- preparer_et_valider(X)          # numerique, noms uniques
+  y <- factoriser_et_valider(y)
+  counts <- effectifs(y)
+  M <- moyennes_par_classe(X, y, counts)
+  W <- covariance_poolée(X, y, M)      # Xc'Xc / (n-K)
+  (W_inv, pseudo) <- inverser(W, tol)  # Cholesky ou Moore-Penrose
+  pi <- resoudre_priors(priors_user, counts)
+  pour chaque classe k:
+    a_k  <- W_inv * mu_k
+    a0_k <- log(pi_k) - 0.5 * mu_k' * W_inv * mu_k
+  stocker coefficients, means, priors, W
+  retourner self
+\end{lstlisting}
+
+\subsection{Prédiction}
+
+\begin{lstlisting}
+DECISION_FUNCTION(X):
+  X <- aligner_colonnes_par_nom(X, feature_names)
+  S <- X %*% A + a0                    # scores d_k(x)
+  retourner S
+
+PREDICT(X):
+  retourner classes[argmax_ligne(DECISION_FUNCTION(X))]
+
+PREDICT_PROBA(X):
+  retourner softmax_lignes(DECISION_FUNCTION(X))
+\end{lstlisting}
+
+\subsection{Softmax numériquement stable}
+
+Pour chaque ligne de scores \(s\), on calcule
+\(\exp(s_j - \max s) / \sum_j \exp(s_j - \max s)\) afin d'éviter les
+débordements numériques.
+
+%----------------------------------------------------------------------
+\section{Choix d'implémentation}
+%----------------------------------------------------------------------
+
+\begin{itemize}
+  \item \textbf{Inversion de \(W\)} : tentative Cholesky (\texttt{chol} /
+    \texttt{chol2inv}) ; repli eigen/pseudo-inverse si matrice mal
+    conditionnée.
+  \item \textbf{API chaînable} : \texttt{fit} retourne \texttt{self} de façon
+    invisible (\texttt{LDA\$new()\$fit(X,y)\$predict(X)}).
+  \item \textbf{Robustesse prédiction} : matching par nom, colonnes
+    supplémentaires ignorées, vecteur nommé accepté pour une observation.
+  \item \textbf{Pas de dépendance algorithmique lourde} : seul \texttt{R6} est
+    en \texttt{Imports} ; \texttt{MASS} sert aux tests de référence.
+\end{itemize}
+
+%----------------------------------------------------------------------
+\section{Application Shiny}
+%----------------------------------------------------------------------
+
+L'application (\texttt{inst/shiny/app.R}) permet de :
+\begin{enumerate}
+  \item importer des données (iris enrichi, csv/tsv/txt/xlsx) ;
+  \item choisir cible, variables explicatives numériques et variables
+        illustratives (exclues du modèle) ;
+  \item entraîner via \texttt{LDA\$fit} ;
+  \item évaluer (sur apprentissage ou split stratifié 80/20, graine 2026) ;
+  \item prédire un individu ou un fichier, avec exports CSV.
+\end{enumerate}
+Les métriques affichées (exactitude, précision, rappel, F1, F1 macro,
+exactitude équilibrée) sont descriptives ; elles n'appartiennent pas au cœur
+statistique minimal mais documentent l'usage du modèle.
+
+%----------------------------------------------------------------------
+\section{Tests et validation}
+%----------------------------------------------------------------------
+
+Deux batteries principales :
+\begin{itemize}
+  \item \texttt{tests/test-LDA.R} : API, validations, cas singulier, accord
+        avec \texttt{MASS::lda} sur iris ;
+  \item \texttt{tests/test-reference.R} : coefficients confrontés à une
+        formule \og textbook \fg{} indépendante ; jeux iris, mtcars,
+        ToothGrowth, Pima, fgl, crabs ; prédiction hors échantillon Pima.
+\end{itemize}
+L'accord des postérieurs avec \texttt{MASS::lda} \cite{venables2002mass} à une
+tolérance de \(10^{-8}\) constitue la validation externe principale.
+
+%----------------------------------------------------------------------
+\section{Installation et documentation}
+%----------------------------------------------------------------------
+
+\begin{lstlisting}
+remotes::install_github(
+  "thomas-fonferrier/projet-lda-r",
+  subdir = "PredLDA",
+  upgrade = "never"
+)
+\end{lstlisting}
+
+Documentation utilisateur :
+\begin{itemize}
+  \item pages d'aide \texttt{?LDA} (anglais, normes R / roxygen2) ;
+  \item README et vignette \texttt{predlda-intro} (tutoriel reproductible) ;
+  \item fichiers d'exemple dans \texttt{inst/extdata/}.
+\end{itemize}
+
+%----------------------------------------------------------------------
+\section{Limites et perspectives}
+%----------------------------------------------------------------------
+
+Le cœur actuel exige des prédicteurs numériques. Parmi les extensions prévues
+par le cahier des charges et non finalisées dans le moteur : prétraitement des
+explicatives catégorielles, stratégie automatique de sélection de variables,
+indicateurs de pertinence des variables. L'interface Shiny rend ces limites
+explicites et n'assimile pas la sélection manuelle à une procédure statistique
+automatique.
+
+%----------------------------------------------------------------------
+\section{Conclusion}
+%----------------------------------------------------------------------
+
+PredLDA fournit une LDA prédictive installable, documentée et testée, avec une
+API R6 claire et une application Shiny de démonstration. L'implémentation suit
+les formules classiques \cite{hastie2009esl} et se valide contre
+\texttt{MASS::lda}.
+
+%----------------------------------------------------------------------
+\bibliographystyle{plain}
+\bibliography{references}
+
+\appendix
+\section{Répartition indicative des modules}
+Les calculs de \texttt{stats\_utils.R} sont internes (non exportés). Seule la
+classe \texttt{LDA} est exportée dans le \texttt{NAMESPACE}.
+
+\section{Jeux d'exemple livrés}
+\texttt{iris\_apprentissage.tsv}, \texttt{iris\_apprentissage\_fr.csv},
+\texttt{iris\_nouveaux.tsv} (également utilisés par l'application Shiny).
+
+\end{document}

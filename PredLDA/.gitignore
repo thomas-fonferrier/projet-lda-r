@@ -5,6 +5,7 @@
 *.Rproj
 *.tar.gz
 *.Rcheck/
+inst/doc
 
 # LaTeX build files of the report
 report/*.aux
@@ -15,3 +16,5 @@ report/*.out
 report/*.toc
 report/*.synctex.gz
 report/*.pdf
+report/*.fls
+report/*.fdb_latexmk
