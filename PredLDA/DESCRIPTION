@@ -5,10 +5,10 @@ Version: 0.1.0
 Authors@R: c(
     person("Thomas", "Fonferrier",
            email = "thomas.fonferrier@univ-lyon2.fr",
-           role = c("aut")),
+           role = "aut"),
     person("Ryan", "Ducret",
            email = "ryan.ducret@univ-lyon2.fr",
-           role = "aut", "cre"),
+           role = c("aut", "cre")),
     person("Aya", "Saadi",
            email = "aya.saadi@univ-lyon2.fr",
            role = "aut"),
