@@ -1,4 +1,4 @@
-1. Régularisation de W
+# 1. Régularisation de W
 # W est rétrécie vers sa diagonale : (1 - reg) * W + reg * diag(W)
 regularize_within_cov <- function(W, reg = 0) {
   if (!is.numeric(reg) || length(reg) != 1L || is.na(reg) || reg < 0 || reg > 1) {
@@ -9,7 +9,7 @@ regularize_within_cov <- function(W, reg = 0) {
 }
  
  
-2. Encodage des variables explicatives
+# 2. Encodage des variables explicatives
 # Appris sur l'apprentissage. Pour une variable catégorielle, on crée
 # une indicatrice par modalité sauf la première (référence) : avec toutes les
 # modalités, les indicatrices somment à 1 et W devient singulière.
@@ -135,7 +135,7 @@ subset_encoder <- function(encoder, keep) {
 }
  
  
-3. Parallélisation
+# 3. Parallélisation
 # mclapply sous Linux/macOS, cluster PSOCK sous Windows
 check_n_cores <- function(n_cores) {
   if (!is.numeric(n_cores) || length(n_cores) != 1L || is.na(n_cores) ||
@@ -163,7 +163,7 @@ parallel_lapply <- function(X, FUN, n_cores = 1L,
 }
  
  
-4. Lambda de Wilks et test F
+# 4. Lambda de Wilks et test F
 # Lambda = det(W) / det(T), W et T matrices SCE intra-classes et totale.
 # On met W et T à l'échelle de T pour que la tolérance ne dépende pas des unités.
 scale_sscp <- function(W, Tt, n, K) {
@@ -225,7 +225,7 @@ rao_f_test <- function(lambda, p, q_h, q_e) {
 }
  
  
-5. Sélection de variables (STEPDISC ascendant)
+# 5. Sélection de variables (STEPDISC ascendant)
 # À chaque étape on ajoute la variable dont le
 # F partiel a la plus petite p-value, tant qu'elle reste sous alpha.
 # Une variable catégorielle entre en bloc.
@@ -275,7 +275,7 @@ stepwise_forward <- function(X, y, groups, alpha = 0.05, max_vars = NULL,
   list(selected = selected, steps = steps)
 }
  
- 6. Indicateurs d'évaluation globale et par classe
+ # 6. Indicateurs d'évaluation globale et par classe
 compute_classification_metrics <- function(y_true, y_pred, classes) {
   if (length(y_true) != length(y_pred)) {
     stop("`y_true` and `y_pred` must have the same length.", call. = FALSE)
@@ -323,7 +323,7 @@ compute_classification_metrics <- function(y_true, y_pred, classes) {
 }
  
  
- 7. Pertinence des variables
+#  7. Pertinence des variables
 # F de retrait (lambda de Wilks partiel), F univarié
 # et norme des coefficients standardisés. Les pentes sont centrées entre classes
 # car un décalage commun à toutes les classes ne change pas les prédictions.
