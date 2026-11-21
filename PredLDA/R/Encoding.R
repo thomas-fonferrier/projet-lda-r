@@ -364,3 +364,166 @@ compute_variable_relevance <- function(means, counts, within_cov, coefficients, 
   out
 }
  
+8. Validation croisée
+# Plis stratifiés : on mélange chaque classe puis on distribue les observations
+# à tour de rôle entre les k plis, pour garder les proportions et des plis de même taille.
+make_folds <- function(y, k) {
+  ord <- unlist(lapply(split(seq_along(y), y), function(i) i[sample.int(length(i))]),
+                use.names = FALSE)
+  folds <- integer(length(y))
+  folds[ord] <- rep_len(seq_len(k), length(y))
+  folds
+}
+ 
+check_cv_inputs <- function(model, X, y) {
+  if (!inherits(model, "LDA")) stop("`model` must be an LDA object.", call. = FALSE)
+  if (!is.data.frame(X) && !is.matrix(X)) stop("'X' must be a data frame or a matrix.", call. = FALSE)
+  if (is.data.frame(y)) y <- y[[1L]]
+  if (length(y) != nrow(X)) stop("'y' must have one value per row of 'X'.", call. = FALSE)
+  if (anyNA(y)) stop("'y' contains missing values.", call. = FALSE)
+  droplevels(as.factor(y))
+}
+ 
+check_k <- function(k, n) {
+  if (!is.numeric(k) || length(k) != 1L || is.na(k) || k < 2 || k > n || k != round(k)) {
+    stop("`k` must be an integer between 2 and the number of observations.", call. = FALSE)
+  }
+  as.integer(k)
+}
+ 
+#' Cross-validated evaluation of an LDA model
+#'
+#' Stratified k-fold cross-validation: the model is fitted on k - 1 folds and
+#' evaluated on the remaining one, k times. All the settings of \code{model}
+#' are reused (priors, \code{reg}, forward selection...); when a selection is
+#' requested, it is run again inside each fold so that the test fold never
+#' influences it.
+#'
+#' @param model An \code{\link{LDA}} object, fitted or not, whose settings are used.
+#' @param X Data frame or matrix of explanatory variables.
+#' @param y Target variable, one value per row of \code{X}.
+#' @param k Number of folds.
+#' @param seed Optional seed for a reproducible split (calls \code{set.seed}).
+#' @param n_cores Number of cores; folds are fitted in parallel when > 1.
+#' @param folds Optional vector giving the fold of each row; overrides
+#'   \code{k} and \code{seed}.
+#' @return A list with \code{summary} (mean and standard deviation of each
+#'   global indicator over the folds), \code{folds} (indicators of each fold),
+#'   \code{metrics} (indicators computed on all out-of-fold predictions, same
+#'   structure as \code{LDA$evaluate()}) and \code{predictions} (out-of-fold
+#'   predicted class of each observation).
+#' @seealso \code{\link{tune_reg}}
+#' @examples
+#' cv <- cross_validate(LDA$new(), iris[, 1:4], iris$Species, k = 5, seed = 2026)
+#' cv$summary
+#' cv$metrics$confusion_matrix
+#' @export
+cross_validate <- function(model, X, y, k = 10, seed = NULL, n_cores = 1L, folds = NULL) {
+  y <- check_cv_inputs(model, X, y)
+  n <- nrow(X)
+  n_cores <- check_n_cores(n_cores)
+  if (is.null(folds)) {
+    k <- check_k(k, n)
+    if (!is.null(seed)) set.seed(seed)
+    folds <- make_folds(y, k)
+  } else if (length(folds) != n || anyNA(folds)) {
+    stop("`folds` must give one fold per row of 'X'.", call. = FALSE)
+  }
+  ids <- sort(unique(folds))
+ 
+  results <- parallel_lapply(ids, function(f) {
+    test <- which(folds == f)
+    m <- model$clone(deep = TRUE)
+    if (n_cores > 1L) m$n_cores <- 1L
+    warns <- character(0)
+    tryCatch(
+      withCallingHandlers(
+        m$fit(X[-test, , drop = FALSE], y[-test]),
+        warning = function(w) {
+          warns <<- c(warns, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) stop(sprintf("Fold %d: %s", f, conditionMessage(e)), call. = FALSE)
+    )
+    list(test = test, pred = as.character(m$predict(X[test, , drop = FALSE])), warnings = warns)
+  }, n_cores)
+ 
+  classes <- levels(y)
+  pred <- character(n)
+  for (r in results) pred[r$test] <- r$pred
+  pred <- factor(pred, levels = classes)
+ 
+  fold_scores <- do.call(rbind, lapply(seq_along(results), function(i) {
+    g <- compute_classification_metrics(y[results[[i]]$test], results[[i]]$pred, classes)$global
+    data.frame(fold = ids[i], t(stats::setNames(g$value, g$metric)))
+  }))
+  metric_names <- setdiff(names(fold_scores), "fold")
+  summary <- data.frame(
+    metric = metric_names,
+    mean = vapply(fold_scores[metric_names], mean, numeric(1), na.rm = TRUE),
+    sd = vapply(fold_scores[metric_names], stats::sd, numeric(1), na.rm = TRUE),
+    row.names = NULL, stringsAsFactors = FALSE
+  )
+ 
+  warns <- unique(unlist(lapply(results, `[[`, "warnings")))
+  if (length(warns)) warning(paste(warns, collapse = "\n"), call. = FALSE)
+ 
+  list(summary = summary, folds = fold_scores,
+       metrics = compute_classification_metrics(y, pred, classes), predictions = pred)
+}
+ 
+ 
+9. Choix de reg par validation croisée (grandes dimensions)
+# Toutes les valeurs de reg sont testées sur les mêmes plis pour être comparables.
+ 
+#' Choose the regularisation parameter by cross-validation
+#'
+#' Each value of \code{grid} is evaluated by stratified k-fold
+#' cross-validation on the same folds. The value with the best mean score is
+#' kept (the smallest one in case of a tie) and the model is refitted with it
+#' on all the data. Mostly useful when there are many variables compared with
+#' the number of observations.
+#'
+#' @inheritParams cross_validate
+#' @param grid Values of \code{reg} to try, in [0, 1].
+#' @param metric Global indicator to maximise.
+#' @return A list with \code{results} (mean and standard deviation of
+#'   \code{metric} for each value of \code{reg}), \code{metric},
+#'   \code{best_reg} and \code{model} (a copy of \code{model} refitted on all
+#'   the data with \code{best_reg}).
+#' @seealso \code{\link{cross_validate}}
+#' @examples
+#' tuned <- tune_reg(LDA$new(), iris[, 1:4], iris$Species,
+#'                   grid = c(0, 0.1, 0.5, 0.9), k = 5, seed = 2026)
+#' tuned$results
+#' tuned$best_reg
+#' @export
+tune_reg <- function(model, X, y, grid = c(0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9),
+                     k = 10, metric = c("accuracy", "balanced_accuracy", "macro_f1", "cohen_kappa"),
+                     seed = NULL, n_cores = 1L) {
+  metric <- match.arg(metric)
+  yf <- check_cv_inputs(model, X, y)
+  if (!is.numeric(grid) || !length(grid) || anyNA(grid) || any(grid < 0 | grid > 1)) {
+    stop("`grid` must contain values in [0, 1].", call. = FALSE)
+  }
+  grid <- sort(unique(grid))
+  k <- check_k(k, nrow(X))
+  if (!is.null(seed)) set.seed(seed)
+  folds <- make_folds(yf, k)
+ 
+  scores <- lapply(grid, function(r) {
+    m <- model$clone(deep = TRUE)
+    m$reg <- r
+    s <- suppressWarnings(cross_validate(m, X, yf, folds = folds, n_cores = n_cores))$summary
+    s[s$metric == metric, c("mean", "sd")]
+  })
+  results <- data.frame(reg = grid, do.call(rbind, scores), row.names = NULL)
+  if (all(is.na(results$mean))) stop("The metric could not be computed for any value of `reg`.", call. = FALSE)
+ 
+  best_reg <- results$reg[which.max(results$mean)]
+  final <- model$clone(deep = TRUE)
+  final$reg <- best_reg
+  final$fit(X, yf)
+  list(results = results, metric = metric, best_reg = best_reg, model = final)
+}
