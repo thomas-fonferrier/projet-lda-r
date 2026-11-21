@@ -1,27 +1,18 @@
-1. Régularisation de la matrice intra-classes W 
-
-# W_reg = (1 - reg) * W + reg * diag(W), avec reg dans [0, 1].
-# Rétrécit W vers sa diagonale : W_reg est inversible dès que toutes les
-# variances intra-classes sont > 0, même quand p > n - K.
+1. Régularisation de W
+# W est rétrécie vers sa diagonale : (1 - reg) * W + reg * diag(W)
 regularize_within_cov <- function(W, reg = 0) {
   if (!is.numeric(reg) || length(reg) != 1L || is.na(reg) || reg < 0 || reg > 1) {
     stop("`reg` must be a single numeric value in [0, 1].", call. = FALSE)
   }
   if (reg == 0) return(W)
-  p <- nrow(W)
-  diag_target <- diag(diag(W), nrow = p, ncol = p)
-  (1 - reg) * W + reg * diag_target
+  (1 - reg) * W + reg * diag(diag(W), nrow = nrow(W))
 }
  
-2. Encodage des variables explicatives
  
-# Apprend l'encodage sur les données d'apprentissage uniquement.
-# - variable numérique : gardée telle quelle ;
-# - variable catégorielle (facteur, texte, logique) : une indicatrice 0/1 par
-#   modalité SAUF la première, qui sert de référence. Avec toutes les
-#   modalités, les indicatrices d'une variable somment à 1 et W est singulière.
-# `groups` relie chaque variable d'origine à ses colonnes encodées : la
-# sélection et la pertinence traitent une variable catégorielle comme un bloc.
+2. Encodage des variables explicatives
+# Appris sur l'apprentissage. Pour une variable catégorielle, on crée
+# une indicatrice par modalité sauf la première (référence) : avec toutes les
+# modalités, les indicatrices somment à 1 et W devient singulière.
 fit_feature_encoder <- function(X) {
   if (!is.data.frame(X) && !is.matrix(X)) {
     stop("`X` must be a data.frame or a matrix.", call. = FALSE)
@@ -36,7 +27,7 @@ fit_feature_encoder <- function(X) {
  
   col_types <- stats::setNames(character(ncol(df)), names(df))
   factor_levels <- list()
-  groups <- list()
+  groups <- list()  # colonnes encodées de chaque variable
  
   for (nm in names(df)) {
     col <- df[[nm]]
@@ -51,8 +42,6 @@ fit_feature_encoder <- function(X) {
       if (anyNA(chr) || any(!nzchar(trimws(chr)))) {
         stop(sprintf("Categorical predictor '%s' contains missing or empty values.", nm), call. = FALSE)
       }
-      # Ordre des modalités : celui du facteur s'il existe (comme lm()),
-      # sinon l'ordre alphabétique. La première modalité est la référence.
       levs <- if (is.factor(col)) levels(droplevels(col)) else sort(unique(chr))
       if (length(levs) < 2L) {
         stop(sprintf("Categorical predictor '%s' must have at least two observed levels.", nm), call. = FALSE)
@@ -67,22 +56,13 @@ fit_feature_encoder <- function(X) {
  
   encoded_cols <- unlist(groups, use.names = FALSE)
   if (anyDuplicated(encoded_cols)) {
-    stop("Encoded column names clash (e.g. a column named 'x_a' and a categorical 'x' with level 'a'). ",
-         "Please rename the columns.", call. = FALSE)
+    stop("Encoded column names clash, please rename the columns.", call. = FALSE)
   }
  
-  list(
-    raw_names = names(df),
-    col_types = col_types,
-    factor_levels = factor_levels,
-    groups = groups,
-    encoded_cols = encoded_cols
-  )
+  list(raw_names = names(df), col_types = col_types, factor_levels = factor_levels,
+       groups = groups, encoded_cols = encoded_cols)
 }
  
-# Applique un encodage déjà appris (apprentissage ou prédiction) et renvoie
-# une matrice numérique dont les colonnes suivent encoder$encoded_cols.
-# Une modalité jamais vue à l'apprentissage provoque une erreur explicite.
 transform_features <- function(X, encoder, allow_extra_cols = TRUE) {
   if (!is.data.frame(X) && !is.matrix(X)) {
     stop("`X` must be a data.frame or a matrix.", call. = FALSE)
@@ -101,7 +81,7 @@ transform_features <- function(X, encoder, allow_extra_cols = TRUE) {
     }
   }
  
-  # Conserver les noms de lignes explicites (comme as.matrix()).
+  # on garde les noms de lignes seulement s'ils sont explicites, comme as.matrix()
   rn <- if (is.data.frame(X)) {
     if (.row_names_info(X) > 0L) row.names(X) else NULL
   } else rownames(X)
@@ -144,7 +124,6 @@ transform_features <- function(X, encoder, allow_extra_cols = TRUE) {
   out
 }
  
-# Restreint un encodage aux variables retenues (ordre d'origine conservé).
 subset_encoder <- function(encoder, keep) {
   keep <- encoder$raw_names[encoder$raw_names %in% keep]
   encoder$raw_names <- keep
@@ -156,8 +135,8 @@ subset_encoder <- function(encoder, keep) {
 }
  
  
- 6.Parallélisation 
- 
+3. Parallélisation
+# mclapply sous Linux/macOS, cluster PSOCK sous Windows
 check_n_cores <- function(n_cores) {
   if (!is.numeric(n_cores) || length(n_cores) != 1L || is.na(n_cores) ||
       n_cores < 1 || n_cores != round(n_cores)) {
@@ -166,10 +145,6 @@ check_n_cores <- function(n_cores) {
   as.integer(n_cores)
 }
  
-# lapply(), en parallèle si n_cores > 1 : processus forkés (mclapply) sous
-# Linux/macOS, cluster PSOCK sous Windows. Utile seulement quand il y a
-# beaucoup de variables : pour quelques variables, le coût de lancement
-# dépasse le gain.
 parallel_lapply <- function(X, FUN, n_cores = 1L,
                             use_fork = .Platform$OS.type != "windows") {
   n_cores <- min(check_n_cores(n_cores), length(X))
@@ -177,7 +152,9 @@ parallel_lapply <- function(X, FUN, n_cores = 1L,
   if (use_fork) {
     res <- parallel::mclapply(X, FUN, mc.cores = n_cores)
     failed <- vapply(res, inherits, logical(1), what = "try-error")
-    if (any(failed)) stop("Parallel computation failed: ", as.character(res[[which(failed)[1L]]]), call. = FALSE)
+    if (any(failed)) {
+      stop("Parallel computation failed: ", as.character(res[[which(failed)[1L]]]), call. = FALSE)
+    }
     return(res)
   }
   cl <- parallel::makePSOCKcluster(n_cores)
@@ -186,23 +163,16 @@ parallel_lapply <- function(X, FUN, n_cores = 1L,
 }
  
  
- Outils communs : lambda de Wilks 
-
-# Lambda de Wilks d'un ensemble de colonnes : det(W) / det(T), avec W la
-# matrice SCE intra-classes et T la matrice SCE totale (T = W + B).
-# Proche de 0 : classes bien séparées ; égal à 1 : aucune séparation.
- 
-# Met W et T à l'échelle de T (T devient une matrice de corrélation).
-# Lambda ne change pas, mais la tolérance de singularité devient comparable
-# d'une variable à l'autre, quelles que soient leurs unités.
+4. Lambda de Wilks et test F
+# Lambda = det(W) / det(T), W et T matrices SCE intra-classes et totale.
+# On met W et T à l'échelle de T pour que la tolérance ne dépende pas des unités.
 scale_sscp <- function(W, Tt, n, K) {
   s <- sqrt(pmax(diag(Tt), 0))
-  s[!(s > 0)] <- 1                       # variable constante : restera singulière
+  s[!(s > 0)] <- 1
   d <- outer(s, s)
   list(W = W / d, T = Tt / d, n = n, K = K)
 }
  
-# SCE à partir des données encodées (sélection de variables).
 sscp_from_data <- function(X, y) {
   counts <- tabulate(y, nlevels(y))
   M <- rowsum(X, y, reorder = TRUE) / counts
@@ -211,8 +181,7 @@ sscp_from_data <- function(X, y) {
   scale_sscp(crossprod(Xw), crossprod(Xt), nrow(X), nlevels(y))
 }
  
-# SCE à partir d'un modèle ajusté (pertinence), sans relire les données :
-# W = within_cov * (n - K) et B = somme_k n_k (mu_k - mu)(mu_k - mu)'.
+# Même chose à partir du modèle ajusté : W = within_cov * (n - K), T = W + B
 sscp_from_model <- function(means, counts, within_cov) {
   n <- sum(counts)
   K <- length(counts)
@@ -222,7 +191,6 @@ sscp_from_model <- function(means, counts, within_cov) {
   scale_sscp(W, W + crossprod(D), n, K)
 }
  
-# log(det(M)) pour M symétrique ; -Inf si M est (quasi) singulière.
 log_det_pd <- function(M, tol) {
   if (!length(M)) return(0)
   R <- tryCatch(chol(M), error = function(e) NULL)
@@ -232,8 +200,7 @@ log_det_pd <- function(M, tol) {
   sum(log(d2))
 }
  
-# Lambda de Wilks des colonnes `cols` ; NA si elles sont colinéaires,
-# 0 si W est singulière mais pas T (séparation parfaite des classes).
+# NA si les colonnes sont colinéaires, 0 si les classes sont parfaitement séparées
 wilks_lambda <- function(S, cols, tol = 1e-8) {
   if (!length(cols)) return(1)
   lt <- log_det_pd(S$T[cols, cols, drop = FALSE], tol)
@@ -241,12 +208,8 @@ wilks_lambda <- function(S, cols, tol = 1e-8) {
   exp(log_det_pd(S$W[cols, cols, drop = FALSE], tol) - lt)
 }
  
-# Test F d'un lambda de Wilks partiel (approximation de Rao) :
-#   p   = nombre de colonnes testées (1 pour une variable numérique,
-#         nombre de modalités - 1 pour une variable catégorielle),
-#   q_h = K - 1, q_e = n - K - (nombre de colonnes déjà dans le modèle).
-# Le test est exact quand p = 1 ou K = 2 : on retrouve alors
-#   F = (q_e / (K - 1)) * (1 - lambda) / lambda.
+# Test F d'un lambda partiel par l'approximation de Rao (exacte si p = 1 ou K = 2).
+# p = colonnes testées, q_h = K - 1, q_e = n - K - colonnes déjà dans le modèle.
 rao_f_test <- function(lambda, p, q_h, q_e) {
   na <- c(F = NA_real_, df1 = NA_real_, df2 = NA_real_, p_value = NA_real_)
   if (is.na(lambda) || q_e <= 0) return(na)
@@ -262,14 +225,10 @@ rao_f_test <- function(lambda, p, q_h, q_e) {
 }
  
  
-3. Sélection de variables : STEPDISC ascendant 
-
-# Part d'un modèle vide. À chaque étape, on teste l'ajout de chaque variable
-# restante (une variable catégorielle entre ou sort en bloc) et on ajoute
-# celle dont le F partiel a la plus petite p-value, si elle est < alpha.
-# Contrairement à un classement univarié (score F de l'ANOVA), une variable
-# redondante avec celles déjà retenues n'apporte presque rien et n'entre pas.
-# La 1re étape correspond exactement à l'ANOVA univariée.
+5. Sélection de variables (STEPDISC ascendant)
+# À chaque étape on ajoute la variable dont le
+# F partiel a la plus petite p-value, tant qu'elle reste sous alpha.
+# Une variable catégorielle entre en bloc.
 stepwise_forward <- function(X, y, groups, alpha = 0.05, max_vars = NULL,
                              n_cores = 1L, tol = 1e-8) {
   S <- sscp_from_data(X, y)
@@ -316,9 +275,7 @@ stepwise_forward <- function(X, y, groups, alpha = 0.05, max_vars = NULL,
   list(selected = selected, steps = steps)
 }
  
- 
-4. Indicateurs d'évaluation globale et par classe 
- 
+ 6. Indicateurs d'évaluation globale et par classe
 compute_classification_metrics <- function(y_true, y_pred, classes) {
   if (length(y_true) != length(y_pred)) {
     stop("`y_true` and `y_pred` must have the same length.", call. = FALSE)
@@ -344,7 +301,6 @@ compute_classification_metrics <- function(y_true, y_pred, classes) {
   f1 <- ifelse(denom > 0, 2 * tp / denom, NA_real_)
  
   accuracy <- sum(tp) / n
-  # Kappa de Cohen : accord corrigé de l'accord attendu par hasard.
   expected <- sum(support * pred_count) / n^2
   kappa <- if (expected < 1) (accuracy - expected) / (1 - expected) else NA_real_
  
@@ -367,20 +323,10 @@ compute_classification_metrics <- function(y_true, y_pred, classes) {
 }
  
  
-5. Pertinence des variables 
-
-# Pour chaque variable d'origine (bloc d'indicatrices si catégorielle) :
-# - F de retrait : test du lambda de Wilks partiel lambda(modèle complet) /
-#   lambda(modèle sans la variable). Petite p-value : la variable apporte une
-#   information discriminante que les autres n'apportent pas ;
-# - F univarié : pouvoir discriminant de la variable seule (ANOVA à 1 facteur
-#   pour une variable numérique) ;
-# - std_coef_norm : norme des coefficients standardisés (pentes x écart-type
-#   intra-classe), CENTRÉS entre classes. Ajouter le même vecteur aux pentes
-#   de toutes les classes ne change aucune prédiction : sans centrage, cette
-#   partie commune gonflerait la mesure.
-# Les tests utilisent la matrice W non régularisée ; si W est singulière
-# (p trop grand), ils valent NA et le tri se fait sur std_coef_norm.
+ 7. Pertinence des variables
+# F de retrait (lambda de Wilks partiel), F univarié
+# et norme des coefficients standardisés. Les pentes sont centrées entre classes
+# car un décalage commun à toutes les classes ne change pas les prédictions.
 compute_variable_relevance <- function(means, counts, within_cov, coefficients, groups,
                                        tol = 1e-8, n_cores = 1L) {
   S <- sscp_from_model(means, counts, within_cov)
