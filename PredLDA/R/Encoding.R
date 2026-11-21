@@ -1,4 +1,4 @@
-# --- Régularisation de la matrice intra-classes W (reg dans [0, 1]) ---
+# Régularisation de la matrice intra-classes W (reg dans [0, 1]) 
 regularize_within_cov <- function(W, reg = 0) {
   if (!is.numeric(reg) || length(reg) != 1L || is.na(reg) || reg < 0 || reg > 1) {
     stop("`reg` must be a single numeric value in [0, 1].", call. = FALSE)
@@ -9,7 +9,7 @@ regularize_within_cov <- function(W, reg = 0) {
   (1 - reg) * W + reg * diag_target
 }
 
-# --- Encodage reproductible des variables explicatives (numériques + catégorielles) ---
+#  Encodage reproductible des variables explicatives (numériques + catégorielles) 
 fit_feature_encoder <- function(X) {
   if (!is.data.frame(X) && !is.matrix(X)) {
     stop("`X` must be a data.frame or a matrix.", call. = FALSE)
@@ -124,7 +124,7 @@ transform_features <- function(X, encoder, allow_extra_cols = TRUE) {
   out
 }
 
-# --- Sélection de variables par score F (ANOVA univariée), avec parallélisation optionnelle ---
+#  Sélection de variables par score F (ANOVA univariée), avec parallélisation optionnelle 
 select_features_anova <- function(X_mat, y, top_k = NULL, min_f_score = NULL, n_cores = 1L) {
   y <- factor(y)
   n <- nrow(X_mat)
@@ -201,7 +201,7 @@ select_features_anova <- function(X_mat, y, top_k = NULL, min_f_score = NULL, n_
   )
 }
 
-# --- Indicateurs d'évaluation globale et par classe ---
+# Indicateurs d'évaluation globale et par classe 
 compute_classification_metrics <- function(y_true, y_pred, classes) {
   y_true_f <- factor(as.character(y_true), levels = classes)
   y_pred_f <- factor(as.character(y_pred), levels = classes)
@@ -241,7 +241,7 @@ compute_classification_metrics <- function(y_true, y_pred, classes) {
   )
 }
 
-# --- Pertinence descriptive des variables (coefficients standardisés + norme L2 + score F) ---
+# Pertinence descriptive des variables (coefficients standardisés + norme L2 + score F) 
 compute_variable_relevance <- function(coefficients, within_cov, f_scores = NULL) {
   slopes <- coefficients[-1, , drop = FALSE]
   feat_names <- rownames(slopes)
