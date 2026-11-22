@@ -1,103 +1,59 @@
 #' PredLDA: Predictive Linear Discriminant Analysis
-#'
+
 #' Provides the R6 class \code{\link{LDA}} for predictive linear discriminant
 #' analysis with a scikit-learn-like interface.
-#'
-#' @details
-#' After installation, see \code{vignette("predlda-intro", package = "PredLDA")}
-#' and the package README for a reproducible tutorial. Example tabular files
-#' used by the tutorial and the Shiny app are shipped under
-#' \code{system.file("extdata", package = "PredLDA")} and
-#' \code{system.file("shiny/examples", package = "PredLDA")}.
-#'
-#' @seealso \code{\link{LDA}}
-#'
+
 #' @keywords internal
 "_PACKAGE"
-
+ 
 #' Predictive Linear Discriminant Analysis (R6 class)
-#'
+
 #' @description
 #' Predictive LDA with a 'scikit-learn'-like interface: \code{LDA$new()},
 #' \code{$fit(X, y)}, then \code{$predict(X)} / \code{$predict_proba(X)}.
-#'
+
 #' @details
 #' Each class \eqn{k} gets a linear classification function
 #' \eqn{d_k(x) = a_{0k} + a_k^\top x} with \eqn{a_k = W^{-1} \mu_k} and
 #' \eqn{a_{0k} = \log \pi_k - \frac{1}{2} \mu_k^\top W^{-1} \mu_k}, where
 #' \eqn{W} is the pooled within-class covariance matrix. Observations are
 #' assigned to the class with the highest score. If \eqn{W} is singular, a
-#' pseudo-inverse is used and a warning is issued. Variables must be numeric.
-#'
-#' \subsection{Reading the results}{
-#' \itemize{
-#'   \item \code{coefficients}: matrix with one column per class. Row
-#'     \code{(Intercept)} holds \eqn{a_{0k}}; the remaining rows hold
-#'     \eqn{a_k}. Larger score \eqn{d_k(x)} means stronger evidence for class
-#'     \eqn{k}. Coefficient magnitude alone is not a variable-importance
-#'     ranking (units and correlations matter).
-#'   \item \code{means}: class means used to build the classification
-#'     functions (classes in rows, variables in columns).
-#'   \item \code{priors}: prior probabilities \eqn{\pi_k} (default: training
-#'     class proportions).
-#'   \item \code{within_cov}: pooled within-class covariance \eqn{W}.
-#'   \item \code{predict(X)}: predicted class labels (factor with training
-#'     levels). At prediction time, columns of \code{X} are matched by name
-#'     to \code{feature_names}; order may differ and extra columns are
-#'     ignored.
-#'   \item \code{predict_proba(X)}: posterior class probabilities obtained by
-#'     a row-wise softmax of the classification scores. Each row sums to 1.
-#'   \item \code{score(X, y)}: classification accuracy (proportion of correct
-#'     labels).
-#'   \item \code{summary()}: prints class distribution, means and
-#'     coefficients. For binary problems it also prints
-#'     \eqn{D(x) = d_1(x) - d_2(x)}; predict class 1 when \eqn{D(x) > 0}.
-#' }
-#' }
-#'
+#' pseudo-inverse is used and a warning is issued.
+
 #' @references
 #' Hastie T., Tibshirani R., Friedman J. (2009). \emph{The Elements of
 #' Statistical Learning}, 2nd ed., Springer, section 4.3.
-#'
-#' @seealso \code{\link[MASS]{lda}}
-#'
+
 #' @examples
 #' model <- LDA$new()
 #' model$fit(iris[, 1:4], iris$Species)
-#'
-#' # One classification function per class (intercept in the first row)
-#' model$coefficients
-#'
-#' new_obs <- iris[c(1, 51, 101), 1:4]
-#' model$predict(new_obs)
-#' model$predict_proba(new_obs)   # rows sum to 1
-#' model$score(iris[, 1:4], iris$Species)
+#' model$predict(iris[c(1, 51, 101), 1:4])
+#' model$predict_proba(iris[c(1, 51, 101), 1:4])
 #' model$summary()
-#'
-#' # Example files shipped with the package
-#' ex <- system.file("extdata", "iris_nouveaux.tsv", package = "PredLDA")
-#' if (nzchar(ex)) {
-#'   newdata <- read.delim(ex, check.names = FALSE)
-#'   model$predict(newdata[, 1:4])
-#' }
-#'
+
 #' @importFrom R6 R6Class
 #' @export
 LDA <- R6::R6Class(
   "LDA",
-
+ 
   public = list(
-
+ 
     #' @field priors Prior class probabilities.
     priors = NULL,
     #' @field tol Tolerance used to detect a singular \eqn{W}.
     tol = NULL,
+    reg = 0,
+    selection = "none",
+    alpha = 0.05,
+    n_cores = 1L,
     #' @field classes Levels of the target variable.
     classes = NULL,
     #' @field class_counts Training observations per class.
     class_counts = NULL,
     #' @field feature_names Names of the explanatory variables.
     feature_names = NULL,
+    encoded_names = NULL,
+    selection_steps = NULL,
     #' @field n_obs Number of training observations.
     n_obs = NULL,
     #' @field means Class means (classes in rows).
@@ -108,13 +64,14 @@ LDA <- R6::R6Class(
     coefficients = NULL,
     #' @field is_fitted \code{TRUE} once \code{$fit()} has run.
     is_fitted = FALSE,
-
+ 
     #' @description Create a new, unfitted LDA model.
     #' @param priors Optional positive vector of class priors (named or in
     #'   \code{levels(y)} order), rescaled to sum to 1. Default: class proportions.
     #' @param tol Relative tolerance for null eigenvalues of \eqn{W}.
     #' @return A new \code{LDA} object.
-    initialize = function(priors = NULL, tol = 1e-8) {
+    initialize = function(priors = NULL, tol = 1e-8, reg = 0,
+                          selection = c("none", "forward"), alpha = 0.05, n_cores = 1L) {
       if (!is.null(priors)) {
         if (!is.numeric(priors) || anyNA(priors) || any(priors <= 0)) {
           stop("'priors' must be a vector of strictly positive numbers.", call. = FALSE)
@@ -123,39 +80,66 @@ LDA <- R6::R6Class(
       if (!is.numeric(tol) || length(tol) != 1L || is.na(tol) || tol <= 0) {
         stop("'tol' must be a single strictly positive number.", call. = FALSE)
       }
+      if (!is.numeric(reg) || length(reg) != 1L || is.na(reg) || reg < 0 || reg > 1) {
+        stop("'reg' must be a single number in [0, 1].", call. = FALSE)
+      }
+      if (!is.numeric(alpha) || length(alpha) != 1L || is.na(alpha) || alpha <= 0 || alpha >= 1) {
+        stop("'alpha' must be a single number in (0, 1).", call. = FALSE)
+      }
       private$user_priors <- priors
       self$tol <- tol
+      self$reg <- reg
+      self$selection <- match.arg(selection)
+      self$alpha <- alpha
+      self$n_cores <- check_n_cores(n_cores)
       invisible(self)
     },
-
+ 
     #' @description Fit the model.
-    #' @param X Data frame or matrix of numeric variables.
+    #' @param X Data frame or matrix of explanatory variables.
     #' @param y Target (factor, at least two classes), one value per row of \code{X}.
     #' @return The object, invisibly (chainable).
     fit = function(X, y) {
       X <- private$prepare_X(X, training = TRUE)
+      encoder <- fit_feature_encoder(X)
+      X <- transform_features(X, encoder)
       y <- private$prepare_y(y, nrow(X))
-
+ 
       n <- nrow(X)
       K <- nlevels(y)
       if (n <= K) {
         stop("The number of observations must exceed the number of classes.", call. = FALSE)
       }
-
+ 
+      steps <- NULL
+      if (self$selection == "forward") {
+        sel <- stepwise_forward(X, y, encoder$groups, alpha = self$alpha,
+                                n_cores = self$n_cores, tol = self$tol)
+        if (!length(sel$selected)) {
+          stop(sprintf("Forward selection retained no variable at alpha = %g.", self$alpha), call. = FALSE)
+        }
+        encoder <- subset_encoder(encoder, sel$selected)
+        X <- X[, encoder$encoded_cols, drop = FALSE]
+        steps <- sel$steps
+      }
+ 
       counts <- tabulate(y, nbins = K)
       names(counts) <- levels(y)
-
+ 
       M <- class_means(X, y, counts)
       W <- pooled_within_cov(X, y, M)
-      W_inv <- inverse_cov(W, self$tol)
+      W_inv <- inverse_cov(regularize_within_cov(W, self$reg), self$tol)
       pri <- resolve_priors(private$user_priors, counts)
       coefs <- classification_functions(M, W_inv$inverse, pri)
-
+ 
+      private$encoder <- encoder
       private$used_pseudo_inverse <- W_inv$pseudo
       self$classes <- levels(y)
       self$class_counts <- counts
       self$priors <- pri
-      self$feature_names <- colnames(X)
+      self$feature_names <- encoder$raw_names
+      self$encoded_names <- colnames(X)
+      self$selection_steps <- steps
       self$n_obs <- n
       self$means <- M
       self$within_cov <- W
@@ -163,7 +147,7 @@ LDA <- R6::R6Class(
       self$is_fitted <- TRUE
       invisible(self)
     },
-
+ 
     #' @description Scores of the classification functions.
     #' @param X Data frame or matrix with the variables used in \code{$fit()}.
     #' @return Matrix of scores (observations x classes).
@@ -175,14 +159,14 @@ LDA <- R6::R6Class(
       dimnames(S) <- list(rownames(X), self$classes)
       S
     },
-
+ 
     #' @description Posterior class probabilities.
     #' @param X Data frame or matrix with the variables used in \code{$fit()}.
     #' @return Matrix of probabilities (observations x classes).
     predict_proba = function(X) {
       softmax_rows(self$decision_function(X))
     },
-
+ 
     #' @description Predicted classes.
     #' @param X Data frame or matrix with the variables used in \code{$fit()}.
     #' @return Factor with the training levels.
@@ -190,7 +174,7 @@ LDA <- R6::R6Class(
       S <- self$decision_function(X)
       factor(self$classes[max.col(S, ties.method = "first")], levels = self$classes)
     },
-
+ 
     #' @description Accuracy on \code{(X, y)}.
     #' @param X Explanatory variables.
     #' @param y True classes.
@@ -202,7 +186,19 @@ LDA <- R6::R6Class(
       }
       mean(as.character(pred) == as.character(y))
     },
-
+ 
+    evaluate = function(X, y) {
+      if (is.data.frame(y)) y <- y[[1L]]
+      compute_classification_metrics(y, self$predict(X), self$classes)
+    },
+ 
+    relevance = function() {
+      private$check_fitted()
+      compute_variable_relevance(self$means, self$class_counts, self$within_cov,
+                                 self$coefficients, private$encoder$groups,
+                                 tol = self$tol, n_cores = self$n_cores)
+    },
+ 
     #' @description Print the model.
     #' @param ... Ignored.
     print = function(...) {
@@ -219,7 +215,7 @@ LDA <- R6::R6Class(
       print(round(self$coefficients, 4))
       invisible(self)
     },
-
+ 
     #' @description Detailed summary of the fitted model.
     #' @param digits Decimal places displayed.
     #' @return Invisibly, a list with \code{class_distribution}, \code{means}
@@ -232,12 +228,17 @@ LDA <- R6::R6Class(
         prior = as.numeric(self$priors),
         row.names = self$classes
       )
-
+ 
       cat("==== Predictive Linear Discriminant Analysis ====\n\n")
       cat(sprintf("Observations: %d   Variables: %d   Classes: %d\n",
                   self$n_obs, length(self$feature_names), length(self$classes)))
       if (private$used_pseudo_inverse) {
         cat("Note: W was singular; a pseudo-inverse was used.\n")
+      }
+      if (self$reg > 0) cat(sprintf("Regularisation: reg = %g\n", self$reg))
+      if (!is.null(self$selection_steps)) {
+        cat("\n-- Forward selection --\n")
+        print(self$selection_steps, digits = digits, row.names = FALSE)
       }
       cat("\n-- Class distribution and priors --\n")
       print(round(distribution, digits))
@@ -251,7 +252,7 @@ LDA <- R6::R6Class(
         cat(sprintf("(D(x) > 0 => %s, otherwise %s)\n", self$classes[1L], self$classes[2L]))
         print(round(self$coefficients[, 1L] - self$coefficients[, 2L], digits))
       }
-
+ 
       invisible(list(
         class_distribution = distribution,
         means = self$means,
@@ -259,17 +260,18 @@ LDA <- R6::R6Class(
       ))
     }
   ),
-
+ 
   private = list(
     user_priors = NULL,
     used_pseudo_inverse = FALSE,
-
+    encoder = NULL,
+ 
     check_fitted = function() {
       if (!self$is_fitted) {
         stop("The model is not fitted yet: call $fit(X, y) first.", call. = FALSE)
       }
     },
-
+ 
     # At prediction time, columns are matched by name to those seen in fit().
     prepare_X = function(X, training) {
       if (is.numeric(X) && is.null(dim(X))) {
@@ -279,7 +281,7 @@ LDA <- R6::R6Class(
         stop("'X' must be a data frame or a matrix.", call. = FALSE)
       }
       if (nrow(X) == 0L) stop("'X' has no rows.", call. = FALSE)
-
+ 
       if (training) {
         if (ncol(X) == 0L) stop("'X' has no columns.", call. = FALSE)
         if (is.null(colnames(X))) colnames(X) <- paste0("X", seq_len(ncol(X)))
@@ -297,19 +299,11 @@ LDA <- R6::R6Class(
         }
         X <- X[, self$feature_names, drop = FALSE]
       }
-
-      is_num <- if (is.data.frame(X)) vapply(X, is.numeric, logical(1)) else rep(is.numeric(X), ncol(X))
-      if (!all(is_num)) {
-        stop("Non-numeric variables are not supported: ",
-             paste(colnames(X)[!is_num], collapse = ", "), call. = FALSE)
-      }
-      X <- as.matrix(X)
-      storage.mode(X) <- "double"
-      if (anyNA(X)) stop("'X' contains missing values.", call. = FALSE)
-      if (any(!is.finite(X))) stop("'X' contains infinite values.", call. = FALSE)
-      X
+ 
+      if (training) return(X)
+      transform_features(X, private$encoder)
     },
-
+ 
     prepare_y = function(y, n) {
       if (is.data.frame(y)) {
         if (ncol(y) != 1L) stop("'y' must be a single variable.", call. = FALSE)
@@ -323,3 +317,4 @@ LDA <- R6::R6Class(
     }
   )
 )
+ 
