@@ -344,11 +344,13 @@ principale.
 
 \section{Limites}
 
-Le c\oe ur actuel n'accepte que des variables explicatives num\'eriques. Le
-traitement des variables cat\'egorielles, la s\'election automatique de
-variables et des indicateurs de pertinence restent des extensions possibles.
-Dans Shiny, le choix manuel des variables ne remplace pas une proc\'edure
-automatique de s\'election.
+Une modalit\'e absente de l'apprentissage ne peut pas \^etre pr\'edite. Avec
+beaucoup de variables, la s\'election ascendante peut en retenir certaines par
+hasard ; il vaut mieux alors baisser \(\alpha\). Le param\`etre
+\texttt{reg} se choisit \`a la main. L'application Shiny n'utilise pas encore
+les statistiques avanc\'ees : elle n'accepte que des variables num\'eriques,
+et le choix manuel des variables ne remplace pas une proc\'edure automatique
+de s\'election.
 
 \section{Conclusion}
 
