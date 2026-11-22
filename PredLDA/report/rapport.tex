@@ -52,8 +52,8 @@ Ce rapport pr\'esente le package R \textbf{PredLDA}. Le package propose une
 analyse discriminante lin\'eaire pr\'edictive, accessible via une classe R6
 proche de l'API scikit-learn. Nous d\'ecrivons les formules utilis\'ees, le
 d\'ecoupage du code, le d\'eroulement de l'apprentissage et de la pr\'ediction,
-l'application Shiny, les tests, puis l'installation depuis GitHub. Les captures
-de l'interface figurent en annexe.
+les statistiques avancees, l'application Shiny, les tests, puis l'installation depuis GitHub. 
+Les captures de l'interface figurent en annexe.
 \end{abstract}
 
 \tableofcontents
@@ -113,9 +113,10 @@ plus simple de la fronti\`ere, pas une autre m\'ethode.
 
 \section{Architecture du package}
 
-Le code est s\'epar\'e en deux couches. Le fichier \texttt{stats\_utils.R}
-contient les calculs. Le fichier \texttt{lda\_r6.R} contient la classe
-publique, les contr\^oles d'entr\'ee et l'affichage.
+Le code est s\'epar\'e en trois fichiers. \texttt{stats\_utils.R} contient
+les calculs de base. \texttt{Encoding.R} contient les statistiques avanc\'ees
+(section~\ref{sec:avancees}). \texttt{lda\_r6.R} contient la classe
+publique, les contr\^oles d'entr\'ee et l'affichage. 
 
 \begin{table}[H]
 \centering
@@ -123,6 +124,7 @@ publique, les contr\^oles d'entr\'ee et l'affichage.
 \toprule
 \'El\'ement & R\^ole \\
 \midrule
+\texttt{R/Encoding.R} & Statistiques avanc\'ees \\
 \texttt{R/stats\_utils.R} & Calculs internes \\
 \texttt{R/lda\_r6.R} & Classe \texttt{LDA} \\
 \texttt{man/} & Aide \texttt{?LDA} \\
@@ -200,6 +202,80 @@ cela \'echoue, on bascule sur une d\'ecomposition en valeurs propres.
 Le package d\'epend peu de librairies externes. Seul \texttt{R6} est requis
 pour l'usage courant. \texttt{MASS} sert surtout aux tests de r\'ef\'erence.
 \texttt{shiny} et \texttt{readxl} restent optionnels.
+
+\section{Statistiques avanc\'ees}
+\label{sec:avancees}
+ 
+Ces fonctions sont dans \texttt{R/Encoding.R}. La classe \texttt{LDA} les
+appelle dans \texttt{fit()} et dans deux m\'ethodes, \texttt{evaluate()} et
+\texttt{relevance()}.
+ 
+\subsection{Variables cat\'egorielles}
+ 
+Une variable cat\'egorielle \`a \(m\) modalit\'es est remplac\'ee par \(m-1\)
+indicatrices 0/1. La premi\`ere modalit\'e sert de r\'ef\'erence. Avec \(m\)
+indicatrices, leur somme vaudrait 1 sur chaque ligne et \(W\) serait
+singuli\`ere. Le codage est appris dans \texttt{fit()} puis r\'eappliqu\'e
+\`a la pr\'ediction. Une modalit\'e absente de l'apprentissage provoque une
+erreur. Les r\'esultats sont identiques \`a ceux de \texttt{MASS::lda} appel\'e
+avec un facteur.
+ 
+\subsection{S\'election de variables}
+ 
+La s\'election ascendante (STEPDISC) repose sur le lambda de Wilks :
+\begin{equation}
+  \Lambda = \frac{\det(W_{SC})}{\det(T_{SC})},
+\end{equation}
+o\`u \(W_{SC}\) et \(T_{SC}\) sont les matrices de sommes des carr\'es
+intra-classes et totale. \(\Lambda\) est proche de 0 quand les classes sont
+bien s\'epar\'ees, et vaut 1 quand elles ne le sont pas. On part d'un mod\`ele
+vide. \`A chaque \'etape, on teste l'ajout de chaque variable restante par le
+lambda partiel \(\Lambda_p = \Lambda_{q+1} / \Lambda_q\) :
+\begin{equation}
+  F = \frac{n - K - q}{K - 1} \cdot \frac{1 - \Lambda_p}{\Lambda_p},
+\end{equation}
+o\`u \(q\) est le nombre de variables d\'ej\`a retenues. On ajoute la variable
+de plus petite p-value, tant qu'elle reste sous \(\alpha\) (0{,}05 par
+d\'efaut). Une variable cat\'egorielle entre en bloc ; le test utilise alors
+l'approximation de Rao. Sur iris, l'ordre obtenu est Petal.Length,
+Sepal.Width, Petal.Width, puis Sepal.Length.
+ 
+\subsection{Indicateurs d'\'evaluation}
+ 
+\texttt{evaluate(X, y)} renvoie la matrice de confusion, l'exactitude, le taux
+d'erreur, l'exactitude \'equilibr\'ee (moyenne des rappels), le F1 macro et le
+kappa de Cohen. Pour chaque classe, elle donne aussi la pr\'ecision, le rappel
+et le F1. Sur iris, en apprentissage, l'exactitude vaut 0{,}98 et le kappa
+0{,}97.
+ 
+\subsection{Pertinence des variables}
+ 
+\texttt{relevance()} donne, pour chaque variable, le F de retrait, qui teste
+le lambda partiel
+\begin{equation}
+  \Lambda_p = \frac{\Lambda_{\text{complet}}}{\Lambda_{\text{sans la variable}}}.
+\end{equation}
+Elle donne aussi le F univari\'e, c'est-\`a-dire l'ANOVA \`a un
+facteur. Sur iris, Sepal.Length a un F univari\'e de 119 mais un F de retrait
+de 4{,}7 seulement : elle discrimine bien seule, mais apporte peu une fois les
+variables des p\'etales dans le mod\`ele.
+ 
+\subsection{R\'egularisation et parall\'elisation}
+ 
+Avec beaucoup de variables, \(W\) peut ne plus \^etre inversible. Le
+param\`etre \texttt{reg}, compris entre 0 et 1, la r\'etr\'ecit vers sa
+diagonale :
+\begin{equation}
+  W_{\text{reg}} = (1 - \text{reg})\, W + \text{reg}\, \operatorname{diag}(W).
+\end{equation}
+\(W_{\text{reg}}\) reste inversible d\`es que toutes les variances
+intra-classes sont positives, m\^eme quand il y a plus de variables que
+d'observations.
+ 
+Le param\`etre \texttt{n\_cores} r\'epartit les calculs faits variable par
+variable (s\'election, pertinence) sur plusieurs c\oe urs : \texttt{mclapply}
+sous Linux et macOS, un cluster PSOCK sous Windows. Le gain reste faible : avec
+1\,500 variables et 2 c\oe urs, le temps passe de 6{,}0 \`a 5{,}6 secondes.
 
 \section{Application Shiny}
 
