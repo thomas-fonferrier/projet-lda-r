@@ -1,17 +1,17 @@
 #' PredLDA: Predictive Linear Discriminant Analysis
-
+#'
 #' Provides the R6 class \code{\link{LDA}} for predictive linear discriminant
 #' analysis with a scikit-learn-like interface.
-
+#'
 #' @keywords internal
 "_PACKAGE"
  
 #' Predictive Linear Discriminant Analysis (R6 class)
-
+#'
 #' @description
 #' Predictive LDA with a 'scikit-learn'-like interface: \code{LDA$new()},
 #' \code{$fit(X, y)}, then \code{$predict(X)} / \code{$predict_proba(X)}.
-
+#'
 #' @details
 #' Each class \eqn{k} gets a linear classification function
 #' \eqn{d_k(x) = a_{0k} + a_k^\top x} with \eqn{a_k = W^{-1} \mu_k} and
@@ -19,18 +19,18 @@
 #' \eqn{W} is the pooled within-class covariance matrix. Observations are
 #' assigned to the class with the highest score. If \eqn{W} is singular, a
 #' pseudo-inverse is used and a warning is issued.
-
+#'
 #' @references
 #' Hastie T., Tibshirani R., Friedman J. (2009). \emph{The Elements of
 #' Statistical Learning}, 2nd ed., Springer, section 4.3.
-
+#'
 #' @examples
 #' model <- LDA$new()
 #' model$fit(iris[, 1:4], iris$Species)
 #' model$predict(iris[c(1, 51, 101), 1:4])
 #' model$predict_proba(iris[c(1, 51, 101), 1:4])
 #' model$summary()
-
+#'
 #' @importFrom R6 R6Class
 #' @export
 LDA <- R6::R6Class(
@@ -317,4 +317,5 @@ LDA <- R6::R6Class(
     }
   )
 )
+ 
  
