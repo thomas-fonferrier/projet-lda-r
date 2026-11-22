@@ -56,7 +56,7 @@ expect_error(LDA$new(priors = c(-1, 2)))
 expect_error(LDA$new()$predict(X))                       # not fitted
 expect_error(LDA$new()$fit(X, rep("a", 150)))           # one class
 expect_error(LDA$new()$fit(X, y[-1]))                   # length mismatch
-expect_error(LDA$new()$fit(iris, y))                    # factor column in X
+expect_error(LDA$new()$fit(data.frame(d = Sys.Date() + 1:150), y))  # unsupported type
 expect_error(LDA$new(priors = c(0.5, 0.5))$fit(X, y))   # wrong number of priors
 expect_error(m$predict(X[, 1:3]))                       # missing variable
 Xna <- X; Xna[1, 1] <- NA
