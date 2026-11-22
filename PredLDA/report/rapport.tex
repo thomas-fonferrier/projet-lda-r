@@ -52,7 +52,7 @@ Ce rapport pr\'esente le package R \textbf{PredLDA}. Le package propose une
 analyse discriminante lin\'eaire pr\'edictive, accessible via une classe R6
 proche de l'API scikit-learn. Nous d\'ecrivons les formules utilis\'ees, le
 d\'ecoupage du code, le d\'eroulement de l'apprentissage et de la pr\'ediction,
-les statistiques avancees, l'application Shiny, les tests, puis l'installation depuis GitHub. 
+les statistiques avanc\'ees, l'application Shiny, les tests, puis l'installation depuis GitHub. 
 Les captures de l'interface figurent en annexe.
 \end{abstract}
 
@@ -135,7 +135,7 @@ publique, les contr\^oles d'entr\'ee et l'affichage.
 \texttt{report/} & Sources de ce rapport \\
 \bottomrule
 \end{tabular}
-\caption{\'Organisation du package PredLDA.}
+\caption{Organisation du package PredLDA.}
 \end{table}
 
 L'application Shiny n'impl\'emente pas l'algorithme. Elle appelle
@@ -300,12 +300,18 @@ disponible \`a l'adresse
 
 \section{Tests}
 
-Deux fichiers principaux couvrent le c\oe ur du package.
+Trois fichiers couvrent le package.
 \texttt{tests/test-LDA.R} v\'erifie l'API, les erreurs attendues et l'accord
 avec \texttt{MASS::lda} sur iris.
 \texttt{tests/test-reference.R} compare les coefficients \`a une formule
 ind\'ependante, sur plusieurs jeux de donn\'ees. Un test hors \'echantillon
 utilise aussi Pima.
+
+\texttt{tests/test-encoding.R} v\'erifie les statistiques avanc\'ees. Le
+codage est compar\'e \`a \texttt{MASS::lda} avec un facteur. Les \'etapes
+de la s\'election sont compar\'ees \`a l'ANOVA, \`a l'ANCOVA et \`a la
+MANOVA de R. Le F de retrait est compar\'e \`a l'ANCOVA. Les indicateurs sont
+v\'erifi\'es sur un exemple calcul\'e \`a la main.
 
 Sur ces contr\^oles, les post\'erieurs restent align\'es avec
 \texttt{MASS::lda} \cite{venables2002mass} \`a \(10^{-8}\) pr\`es.
