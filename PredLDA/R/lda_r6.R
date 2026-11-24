@@ -20,6 +20,13 @@
 #' assigned to the class with the highest score. If \eqn{W} is singular, a
 #' pseudo-inverse is used and a warning is issued.
 #'
+#' Categorical predictors are one-hot encoded with a reference level dropped.
+#' Optional ridge-like shrinkage of \eqn{W} is controlled by \code{reg}.
+#' Forward variable selection (Wilks lambda / Rao F) is available via
+#' \code{selection = "forward"}. After fitting, \code{$evaluate()} returns
+#' classification metrics and \code{$relevance()} returns variable-relevance
+#' statistics.
+#'
 #' @references
 #' Hastie T., Tibshirani R., Friedman J. (2009). \emph{The Elements of
 #' Statistical Learning}, 2nd ed., Springer, section 4.3.
@@ -29,7 +36,13 @@
 #' model$fit(iris[, 1:4], iris$Species)
 #' model$predict(iris[c(1, 51, 101), 1:4])
 #' model$predict_proba(iris[c(1, 51, 101), 1:4])
+#' model$evaluate(iris[, 1:4], iris$Species)
+#' model$relevance()
 #' model$summary()
+#'
+#' # Forward selection and regularisation
+#' LDA$new(selection = "forward", alpha = 0.05)$fit(iris[, 1:4], iris$Species)
+#' LDA$new(reg = 0.1)$fit(iris[, 1:4], iris$Species)
 #'
 #' @importFrom R6 R6Class
 #' @export
@@ -42,17 +55,23 @@ LDA <- R6::R6Class(
     priors = NULL,
     #' @field tol Tolerance used to detect a singular \eqn{W}.
     tol = NULL,
+    #' @field reg Shrinkage of \eqn{W} toward its diagonal, in \eqn{[0, 1]}.
     reg = 0,
+    #' @field selection Variable-selection strategy (\code{"none"} or \code{"forward"}).
     selection = "none",
+    #' @field alpha Entry threshold for forward selection.
     alpha = 0.05,
+    #' @field n_cores Number of CPU cores for selection/relevance.
     n_cores = 1L,
     #' @field classes Levels of the target variable.
     classes = NULL,
     #' @field class_counts Training observations per class.
     class_counts = NULL,
-    #' @field feature_names Names of the explanatory variables.
+    #' @field feature_names Names of the explanatory variables (raw scale).
     feature_names = NULL,
+    #' @field encoded_names Names of the numeric columns after encoding.
     encoded_names = NULL,
+    #' @field selection_steps Trace of the forward selection, or \code{NULL}.
     selection_steps = NULL,
     #' @field n_obs Number of training observations.
     n_obs = NULL,
@@ -69,6 +88,10 @@ LDA <- R6::R6Class(
     #' @param priors Optional positive vector of class priors (named or in
     #'   \code{levels(y)} order), rescaled to sum to 1. Default: class proportions.
     #' @param tol Relative tolerance for null eigenvalues of \eqn{W}.
+    #' @param reg Shrinkage of \eqn{W} toward its diagonal (\code{0} = none).
+    #' @param selection \code{"none"} or \code{"forward"} (Wilks / Rao F).
+    #' @param alpha Entry p-value threshold for forward selection.
+    #' @param n_cores Number of cores used by selection and relevance.
     #' @return A new \code{LDA} object.
     initialize = function(priors = NULL, tol = 1e-8, reg = 0,
                           selection = c("none", "forward"), alpha = 0.05, n_cores = 1L) {
@@ -96,7 +119,8 @@ LDA <- R6::R6Class(
     },
  
     #' @description Fit the model.
-    #' @param X Data frame or matrix of explanatory variables.
+    #' @param X Data frame or matrix of explanatory variables (numeric and/or
+    #'   categorical). Categorical columns are encoded during fitting.
     #' @param y Target (factor, at least two classes), one value per row of \code{X}.
     #' @return The object, invisibly (chainable).
     fit = function(X, y) {
@@ -187,11 +211,19 @@ LDA <- R6::R6Class(
       mean(as.character(pred) == as.character(y))
     },
  
+    #' @description Classification metrics on \code{(X, y)}.
+    #' @param X Explanatory variables.
+    #' @param y True classes.
+    #' @return A list with \code{confusion_matrix}, \code{global} and
+    #'   \code{per_class} tables.
     evaluate = function(X, y) {
       if (is.data.frame(y)) y <- y[[1L]]
       compute_classification_metrics(y, self$predict(X), self$classes)
     },
  
+    #' @description Variable-relevance statistics on the fitted model.
+    #' @return A data frame with Wilks / Rao F removal tests, univariate F
+    #'   and a standardised-coefficient norm per variable (or block).
     relevance = function() {
       private$check_fitted()
       compute_variable_relevance(self$means, self$class_counts, self$within_cov,

@@ -74,11 +74,13 @@ Le package installable se trouve dans le dossier \texttt{PredLDA/}.
 
 \subsection{Principe}
 
-On dispose de variables num\'eriques \(X\) et d'une cible \(y\) \`a \(K\)
-classes. Pour chaque classe \(k\), on estime une moyenne \(\mu_k\) et une
-probabilit\'e a priori \(\pi_k\). On estime aussi une covariance intra-classe
-commune \(W\). Sous cette hypoth\`ese, la r\`egle de d\'ecision se ram\`ene \`a
-des scores lin\'eaires \cite{hastie2009esl}.
+On dispose de variables explicatives \(X\) (num\'eriques et/ou cat\'egorielles)
+et d'une cible \(y\) \`a \(K\) classes. Les variables cat\'egorielles sont
+d'abord transform\'ees en indicatrices (section~\ref{sec:avancees}). Pour
+chaque classe \(k\), on estime une moyenne \(\mu_k\) et une probabilit\'e a
+priori \(\pi_k\). On estime aussi une covariance intra-classe commune \(W\).
+Sous cette hypoth\`ese, la r\`egle de d\'ecision se ram\`ene \`a des scores
+lin\'eaires \cite{hastie2009esl}.
 
 \subsection{Fonctions de classification}
 
@@ -144,45 +146,55 @@ L'application Shiny n'impl\'emente pas l'algorithme. Elle appelle
 \subsection{Interface R6}
 
 \begin{itemize}[leftmargin=*]
-  \item \texttt{LDA\$new(priors, tol)} : cr\'eation du mod\`ele ;
-  \item \texttt{\$fit(X, y)} : apprentissage ;
+  \item \texttt{LDA\$new(priors, tol, reg, selection, alpha, n\_cores)} :
+        cr\'eation du mod\`ele ;
+  \item \texttt{\$fit(X, y)} : encodage, s\'election \'eventuelle, apprentissage ;
   \item \texttt{\$predict(X)} et \texttt{\$predict\_proba(X)} : d\'eploiement ;
   \item \texttt{\$score(X, y)} : exactitude ;
+  \item \texttt{\$evaluate(X, y)} : indicateurs globaux et par classe ;
+  \item \texttt{\$relevance()} : pertinence des variables ;
   \item \texttt{\$print()} et \texttt{\$summary()} : lecture des r\'esultats.
 \end{itemize}
 
 Apr\`es \texttt{fit}, le mod\`ele expose notamment \texttt{coefficients},
-\texttt{means}, \texttt{priors}, \texttt{within\_cov}, \texttt{classes} et
-\texttt{feature\_names}.
+\texttt{means}, \texttt{priors}, \texttt{within\_cov}, \texttt{classes},
+\texttt{feature\_names}, \texttt{encoded\_names} et
+\texttt{selection\_steps}.
 
 Dans \texttt{coefficients}, chaque colonne correspond \`a une classe. La
 premi\`ere ligne est l'intercept. \`A la pr\'ediction, les colonnes de \(X\)
-sont align\'ees par nom.
+sont align\'ees par nom, puis r\'eencod\'ees comme \`a l'apprentissage.
 
 \section{Pseudo-code}
 
 \subsection{Apprentissage}
 
 \begin{lstlisting}
-FIT(X, y; priors_user, tol):
-  valider X (numerique, fini, sans NA)
-  valider y (>= 2 classes, n > K)
+FIT(X, y; priors_user, tol, reg, selection, alpha):
+  valider X et y (>= 2 classes, n > K)
+  encoder <- apprendre_encodage(X)      # numerique + dummies
+  Xe <- transformer(X, encoder)
+  si selection == "forward":
+    garder les variables retenues par STEPDISC (seuil alpha)
+    restreindre encoder et Xe
   M  <- moyennes par classe
   W  <- covariance poolee
+  W  <- (1 - reg) * W + reg * diag(W)   # regularisation
   W_inv <- inverse(W) ou pseudo-inverse
   pi <- priors (defaut = proportions)
   pour chaque classe k:
     a_k  <- W_inv * mu_k
     a0_k <- log(pi_k) - 0.5 * mu_k' * W_inv * mu_k
-  stocker coefficients, means, priors, W
+  stocker coefficients, means, priors, W, encoder
 \end{lstlisting}
 
 \subsection{Pr\'ediction}
 
 \begin{lstlisting}
 DECISION_FUNCTION(X):
-  aligner les colonnes de X sur feature_names
-  retourner a0 + X %*% A
+  aligner les colonnes sur feature_names
+  Xe <- transformer(X, encoder)         # meme encodage qu'au fit
+  retourner a0 + Xe %*% A
 
 PREDICT(X):
   retourner la classe de score maximal
@@ -197,10 +209,11 @@ num\'eriques quand les scores sont tr\`es \'eloign\'es.
 \section{Choix techniques}
 
 L'inversion de \(W\) passe d'abord par une d\'ecomposition de Cholesky. Si
-cela \'echoue, on bascule sur une d\'ecomposition en valeurs propres.
+cela \'echoue, on bascule sur une d\'ecomposition en valeurs propres. La
+r\'egularisation \'eventuelle est appliqu\'ee avant cette inversion.
 
-Le package d\'epend peu de librairies externes. Seul \texttt{R6} est requis
-pour l'usage courant. \texttt{MASS} sert surtout aux tests de r\'ef\'erence.
+Pour l'usage courant, le package importe \texttt{R6}, \texttt{stats} et
+\texttt{parallel}. \texttt{MASS} sert surtout aux tests de r\'ef\'erence.
 \texttt{shiny} et \texttt{readxl} restent optionnels.
 
 \section{Statistiques avanc\'ees}
@@ -355,9 +368,12 @@ de s\'election.
 \section{Conclusion}
 
 PredLDA fournit une LDA pr\'edictive utilisable depuis R et depuis une interface
-Shiny. L'impl\'ementation suit les formules classiques
-\cite{hastie2009esl}. Elle a \'et\'e confront\'ee \`a \texttt{MASS::lda}. Le
-d\'ep\^ot permet une installation directe, avec documentation et exemples.
+Shiny. Au-del\`a du c\oe ur classique \cite{hastie2009esl}, le package g\`ere
+les variables cat\'egorielles, une s\'election ascendante, la r\'egularisation
+de \(W\), des indicateurs d'\'evaluation et des mesures de pertinence. Les
+r\'esultats ont \'et\'e confront\'es \`a \texttt{MASS::lda} et \`a des tests
+ANOVA/MANOVA. Le d\'ep\^ot permet une installation directe, avec documentation
+et exemples.
 
 \bibliographystyle{plain}
 \bibliography{references}
@@ -365,8 +381,9 @@ d\'ep\^ot permet une installation directe, avec documentation et exemples.
 \appendix
 
 \section{Modules export\'es}
-Les fonctions de \texttt{stats\_utils.R} restent internes. Seule la classe
-\texttt{LDA} est export\'ee dans le \texttt{NAMESPACE}.
+Les fonctions de \texttt{stats\_utils.R} et de \texttt{Encoding.R} restent
+internes. Seule la classe \texttt{LDA} est export\'ee dans le
+\texttt{NAMESPACE}.
 
 \section{Jeux d'exemple}
 Trois fichiers accompagnent le tutoriel et l'application :

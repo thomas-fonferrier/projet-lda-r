@@ -9,23 +9,21 @@
 Provides the R6 class \code{\link{LDA}} for predictive linear discriminant
 analysis with a scikit-learn-like interface.
 }
-\details{
-After installation, see \code{vignette("predlda-intro", package = "PredLDA")}
-and the package README for a reproducible tutorial. Example tabular files
-used by the tutorial and the Shiny app are shipped under
-\code{system.file("extdata", package = "PredLDA")} and
-\code{system.file("shiny/examples", package = "PredLDA")}.
-}
 \seealso{
-\code{\link{LDA}}
+Useful links:
+\itemize{
+  \item \url{https://github.com/thomas-fonferrier/projet-lda-r}
+  \item Report bugs at \url{https://github.com/thomas-fonferrier/projet-lda-r/issues}
+}
+
 }
 \author{
-\strong{Maintainer}: Thomas Fonferrier \email{thomas.fonferrier@univ-lyon2.fr}
+\strong{Maintainer}: Ryan Ducret \email{ryan.ducret@univ-lyon2.fr}
 
 Authors:
 \itemize{
-  \item Thomas Fonferrier \email{thomas.fonferrier@univ-lyon2.fr}
   \item Ryan Ducret \email{ryan.ducret@univ-lyon2.fr}
+  \item Thomas Fonferrier \email{thomas.fonferrier@univ-lyon2.fr}
   \item Aya Saadi \email{aya.saadi@univ-lyon2.fr}
   \item Xilian Jing \email{xilian.jing@univ-lyon2.fr}
 }

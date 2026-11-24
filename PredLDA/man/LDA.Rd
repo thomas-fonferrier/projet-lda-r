@@ -13,61 +13,32 @@ Each class \eqn{k} gets a linear classification function
 \eqn{a_{0k} = \log \pi_k - \frac{1}{2} \mu_k^\top W^{-1} \mu_k}, where
 \eqn{W} is the pooled within-class covariance matrix. Observations are
 assigned to the class with the highest score. If \eqn{W} is singular, a
-pseudo-inverse is used and a warning is issued. Variables must be numeric.
+pseudo-inverse is used and a warning is issued.
 
-\subsection{Reading the results}{
-\itemize{
-  \item \code{coefficients}: matrix with one column per class. Row
-    \code{(Intercept)} holds \eqn{a_{0k}}; the remaining rows hold
-    \eqn{a_k}. Larger score \eqn{d_k(x)} means stronger evidence for class
-    \eqn{k}. Coefficient magnitude alone is not a variable-importance
-    ranking (units and correlations matter).
-  \item \code{means}: class means used to build the classification
-    functions (classes in rows, variables in columns).
-  \item \code{priors}: prior probabilities \eqn{\pi_k} (default: training
-    class proportions).
-  \item \code{within_cov}: pooled within-class covariance \eqn{W}.
-  \item \code{predict(X)}: predicted class labels (factor with training
-    levels). At prediction time, columns of \code{X} are matched by name
-    to \code{feature_names}; order may differ and extra columns are
-    ignored.
-  \item \code{predict_proba(X)}: posterior class probabilities obtained by
-    a row-wise softmax of the classification scores. Each row sums to 1.
-  \item \code{score(X, y)}: classification accuracy (proportion of correct
-    labels).
-  \item \code{summary()}: prints class distribution, means and
-    coefficients. For binary problems it also prints
-    \eqn{D(x) = d_1(x) - d_2(x)}; predict class 1 when \eqn{D(x) > 0}.
-}
-}
+Categorical predictors are one-hot encoded with a reference level dropped.
+Optional ridge-like shrinkage of \eqn{W} is controlled by \code{reg}.
+Forward variable selection (Wilks lambda / Rao F) is available via
+\code{selection = "forward"}. After fitting, \code{$evaluate()} returns
+classification metrics and \code{$relevance()} returns variable-relevance
+statistics.
 }
 \examples{
 model <- LDA$new()
 model$fit(iris[, 1:4], iris$Species)
-
-# One classification function per class (intercept in the first row)
-model$coefficients
-
-new_obs <- iris[c(1, 51, 101), 1:4]
-model$predict(new_obs)
-model$predict_proba(new_obs)   # rows sum to 1
-model$score(iris[, 1:4], iris$Species)
+model$predict(iris[c(1, 51, 101), 1:4])
+model$predict_proba(iris[c(1, 51, 101), 1:4])
+model$evaluate(iris[, 1:4], iris$Species)
+model$relevance()
 model$summary()
 
-# Example files shipped with the package
-ex <- system.file("extdata", "iris_nouveaux.tsv", package = "PredLDA")
-if (nzchar(ex)) {
-  newdata <- read.delim(ex, check.names = FALSE)
-  model$predict(newdata[, 1:4])
-}
+# Forward selection and regularisation
+LDA$new(selection = "forward", alpha = 0.05)$fit(iris[, 1:4], iris$Species)
+LDA$new(reg = 0.1)$fit(iris[, 1:4], iris$Species)
 
 }
 \references{
 Hastie T., Tibshirani R., Friedman J. (2009). \emph{The Elements of
 Statistical Learning}, 2nd ed., Springer, section 4.3.
-}
-\seealso{
-\code{\link[MASS]{lda}}
 }
 \section{Public fields}{
   \if{html}{\out{<div class="r6-fields">}}
@@ -76,11 +47,23 @@ Statistical Learning}, 2nd ed., Springer, section 4.3.
 
     \item{\code{tol}}{Tolerance used to detect a singular \eqn{W}.}
 
+    \item{\code{reg}}{Shrinkage of \eqn{W} toward its diagonal, in \eqn{[0, 1]}.}
+
+    \item{\code{selection}}{Variable-selection strategy (\code{"none"} or \code{"forward"}).}
+
+    \item{\code{alpha}}{Entry threshold for forward selection.}
+
+    \item{\code{n_cores}}{Number of CPU cores for selection/relevance.}
+
     \item{\code{classes}}{Levels of the target variable.}
 
     \item{\code{class_counts}}{Training observations per class.}
 
-    \item{\code{feature_names}}{Names of the explanatory variables.}
+    \item{\code{feature_names}}{Names of the explanatory variables (raw scale).}
+
+    \item{\code{encoded_names}}{Names of the numeric columns after encoding.}
+
+    \item{\code{selection_steps}}{Trace of the forward selection, or \code{NULL}.}
 
     \item{\code{n_obs}}{Number of training observations.}
 
@@ -103,6 +86,8 @@ Statistical Learning}, 2nd ed., Springer, section 4.3.
     \item \href{#method-LDA-predict_proba}{\code{LDA$predict_proba()}}
     \item \href{#method-LDA-predict}{\code{LDA$predict()}}
     \item \href{#method-LDA-score}{\code{LDA$score()}}
+    \item \href{#method-LDA-evaluate}{\code{LDA$evaluate()}}
+    \item \href{#method-LDA-relevance}{\code{LDA$relevance()}}
     \item \href{#method-LDA-print}{\code{LDA$print()}}
     \item \href{#method-LDA-summary}{\code{LDA$summary()}}
     \item \href{#method-LDA-clone}{\code{LDA$clone()}}
@@ -115,7 +100,14 @@ Statistical Learning}, 2nd ed., Springer, section 4.3.
   Create a new, unfitted LDA model.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{LDA$new(priors = NULL, tol = 1e-08)}
+    \preformatted{LDA$new(
+  priors = NULL,
+  tol = 1e-08,
+  reg = 0,
+  selection = c("none", "forward"),
+  alpha = 0.05,
+  n_cores = 1L
+)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
@@ -124,6 +116,10 @@ Statistical Learning}, 2nd ed., Springer, section 4.3.
       \item{\code{priors}}{Optional positive vector of class priors (named or in
 \code{levels(y)} order), rescaled to sum to 1. Default: class proportions.}
       \item{\code{tol}}{Relative tolerance for null eigenvalues of \eqn{W}.}
+      \item{\code{reg}}{Shrinkage of \eqn{W} toward its diagonal (\code{0} = none).}
+      \item{\code{selection}}{\code{"none"} or \code{"forward"} (Wilks / Rao F).}
+      \item{\code{alpha}}{Entry p-value threshold for forward selection.}
+      \item{\code{n_cores}}{Number of cores used by selection and relevance.}
     }
     \if{html}{\out{</div>}}
   }
@@ -145,7 +141,8 @@ Statistical Learning}, 2nd ed., Springer, section 4.3.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{X}}{Data frame or matrix of numeric variables.}
+      \item{\code{X}}{Data frame or matrix of explanatory variables (numeric and/or
+categorical). Categorical columns are encoded during fitting.}
       \item{\code{y}}{Target (factor, at least two classes), one value per row of \code{X}.}
     }
     \if{html}{\out{</div>}}
@@ -241,6 +238,46 @@ Statistical Learning}, 2nd ed., Springer, section 4.3.
   }
   \subsection{Returns}{
     Proportion of correct predictions.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-LDA-evaluate"></a>}}
+\if{latex}{\out{\hypertarget{method-LDA-evaluate}{}}}
+\subsection{\code{LDA$evaluate()}}{
+  Classification metrics on \code{(X, y)}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{LDA$evaluate(X, y)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{X}}{Explanatory variables.}
+      \item{\code{y}}{True classes.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list with \code{confusion_matrix}, \code{global} and
+  \code{per_class} tables.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-LDA-relevance"></a>}}
+\if{latex}{\out{\hypertarget{method-LDA-relevance}{}}}
+\subsection{\code{LDA$relevance()}}{
+  Variable-relevance statistics on the fitted model.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{LDA$relevance()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame with Wilks / Rao F removal tests, univariate F
+  and a standardised-coefficient norm per variable (or block).
   }
 }
 
