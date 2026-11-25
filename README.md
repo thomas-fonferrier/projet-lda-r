@@ -50,10 +50,10 @@ shiny::runApp("PredLDA/inst/shiny")
 
 ## Team G
 
-- Thomas Fonferrier
-- Ryan Ducret
 - Aya Saadi
 - Xilian Jing
+- Thomas Fonferrier
+- Ryan Ducret
 
 ## Offline plan B
 
