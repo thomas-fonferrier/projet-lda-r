@@ -17,9 +17,10 @@ Authors@R: c(
            role = "aut"))
 Description: Implements predictive linear discriminant analysis (LDA) through an
     R6 class whose interface follows the 'scikit-learn' conventions: fit(),
-    predict(), predict_proba(), print() and summary(). The target variable may
-    have two or more classes and the linear classification functions
-    (one per class) are exposed for interpretation.
+    predict(), predict_proba(), evaluate(), relevance(), print() and summary().
+    Supports numeric and categorical predictors, optional forward selection and
+    regularisation of the within-class covariance. The linear classification
+    functions (one per class) are exposed for interpretation.
 License: MIT + file LICENSE
 Encoding: UTF-8
 URL: https://github.com/thomas-fonferrier/projet-lda-r

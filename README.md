@@ -57,9 +57,9 @@ shiny::runApp("PredLDA/inst/shiny")
 
 ## Offline plan B
 
-A source archive can be built with:
+The source archive is already in the repository root:
+[`PredLDA_0.1.0.tar.gz`](PredLDA_0.1.0.tar.gz).
 
 ```r
-devtools::build("PredLDA")  # creates PredLDA_0.1.0.tar.gz
-# then: install.packages("PredLDA_0.1.0.tar.gz", repos = NULL, type = "source")
+install.packages("PredLDA_0.1.0.tar.gz", repos = NULL, type = "source")
 ```

@@ -96,11 +96,13 @@ shiny::runApp(system.file("shiny", package = "PredLDA"))
 
 The package integration maintainer should declare `shiny` and optionally `readxl` in `Suggests` in `DESCRIPTION`, document the launch command, include the app tutorial in the main project README, and check installation from GitHub. Files under `inst/` are included by package installation unless excluded by package configuration.
 
-## Responsibilities still shared with the algorithm team
+## Scope relative to the R package
 
-The inspected numerical core does not implement categorical-predictor preprocessing, an automatic feature-selection strategy, or variable-relevance statistics. The current UI makes these limits explicit and does not present manual selection as an automatic strategy. Those project requirements must be implemented or agreed upon with the algorithm team, then connected to this app. An updated preprocessing pipeline must be learned only on training data and reused unchanged at prediction time; dummy-variable columns and levels must remain compatible.
-
-The French project report, bibliography, complete package documentation and GitHub submission remain group deliverables. This application is the member-3 deliverable for the currently available numeric model interface, not a claim that the whole group project is complete.
+The PredLDA R6 class now supports categorical predictors, forward selection,
+regularisation and variable-relevance diagnostics. This Shiny app still uses
+the numeric-predictor workflow with manual variable choice. It does not expose
+`selection`, `reg`, `evaluate()` or `relevance()` in the UI. Manual selection
+in the sidebar is not the same as the package's automatic forward selection.
 
 ## Verification
 
